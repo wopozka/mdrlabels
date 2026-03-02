@@ -23,7 +23,8 @@ class ImageLabel(QLabel):
             if self._main:
                 self._main.update_mouse_status(None, None)
             return
-        p = event.position()
+        # używamy event.pos() (QPoint) — daje całkowite współrzędne wewnątrz widgetu
+        p = event.pos()
         x = int(p.x())
         y = int(p.y())
         pm_w = pm.width()
@@ -59,18 +60,35 @@ class ImageLabel(QLabel):
                 self._main.change_zoom(delta)
             event.accept()
         else:
-            # Przekaż zdarzenie do viewportu QScrollArea — to zapewnia przewijanie gdy obraz jest większy niż viewport
+            # Przesuwamy bezpośrednio scrollbary, to działa na dużych obrazach i nie zależy od współrzędnych eventu
             if self._main and hasattr(self._main, 'scroll_area') and self._main.scroll_area is not None:
+                sa = self._main.scroll_area
+                vbar = sa.verticalScrollBar()
+                hbar = sa.horizontalScrollBar()
+                delta_x = event.angleDelta().x()
+                delta_y = event.angleDelta().y()
+                # oblicz liczbę kroków (może być ułamkowe na touchpadach)
+                step_y = delta_y / 120.0 if delta_y else 0.0
+                step_x = delta_x / 120.0 if delta_x else 0.0
+                # wybierz wielkość przesunięcia: użyj singleStep jako jednostki i przemnóż dla sensownej prędkości
                 try:
-                    viewport = self._main.scroll_area.viewport()
-                    # Wywołanie bezpośrednio viewport().wheelEvent obsługuje przewijanie
-                    viewport.wheelEvent(event)
-                    event.accept()
+                    v_step = vbar.singleStep() or 20
                 except Exception:
-                    # Fallback: oznacz jako ignore, wtedy mechanizm Qt spróbuje przekazać dalej
-                    event.ignore()
-            else:
-                event.ignore()
+                    v_step = 20
+                try:
+                    h_step = hbar.singleStep() or 20
+                except Exception:
+                    h_step = 20
+                if abs(step_y) > 0:
+                    vbar.setValue(int(vbar.value() - step_y * v_step * 3))
+                    event.accept()
+                    return
+                if abs(step_x) > 0:
+                    hbar.setValue(int(hbar.value() - step_x * h_step * 3))
+                    event.accept()
+                    return
+            # fallback
+            event.ignore()
 
 class MdrLabel(QMainWindow):
     def __init__(self, parent=None):
@@ -154,7 +172,7 @@ class MdrLabel(QMainWindow):
 
         self.scroll_area = QScrollArea()
         # Nie zmieniamy rozmiaru widgetu automatycznie — chcemy, żeby QLabel zachował rozmiar obrazka
-        # i wtedy QScrollArea pokaże belki przewijania gdy obraz jest większy niż viewport.
+        # i wtedy QScrollArea pokaże belki przewijania gdy obraz większy niż viewport.
         self.scroll_area.setWidgetResizable(False)
          # Pokaż belki przewijania kiedy potrzebne (gdy obraz większy niż widok)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -206,8 +224,8 @@ class MdrLabel(QMainWindow):
         self.image_label.setPixmap(scaled)
         # Ustaw dokładny rozmiar widgetu równy rozmiarowi pixmapy — zapewnia to prawidłowe działanie pasków przewijania
         self.image_label.setFixedSize(scaled.size())
-         # Odśwież pasek statusu (bez współrzędnych)
-         self.update_mouse_status(None, None)
+        # Odśwież pasek statusu (bez współrzędnych)
+        self.update_mouse_status(None, None)
 
     def close_app(self):
         print('zamykam')
