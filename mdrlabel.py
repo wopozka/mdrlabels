@@ -15,6 +15,9 @@ class ImageLabel(QLabel):
         super().__init__(*args, **kwargs)
         self._main = main_window
         self.setMouseTracking(True)
+        # Panning state (right mouse button drag)
+        self._panning = False
+        self._pan_last_pos = None
 
     def mouseMoveEvent(self, event):
         # event.position() zwraca pozycję względem widgetu (QPointF)
@@ -44,6 +47,24 @@ class ImageLabel(QLabel):
             if self._main:
                 # Przekaż współrzędne względem aktualnie wyświetlanego pixmapa
                 self._main.update_mouse_status(img_x, img_y)
+
+        # Jeśli trwa panning (prawe przycisk wciśnięty) — obsłuż przewijanie
+        if self._panning and self._pan_last_pos is not None and self._main and hasattr(self._main, 'scroll_area'):
+            cur = event.pos()
+            dx = cur.x() - self._pan_last_pos.x()
+            dy = cur.y() - self._pan_last_pos.y()
+            sa = self._main.scroll_area
+            if sa is not None:
+                try:
+                    hbar = sa.horizontalScrollBar()
+                    vbar = sa.verticalScrollBar()
+                    # przesuwamy wartości scrollbara przeciwnie do ruchu myszy, żeby obraz podążał za kursorem
+                    hbar.setValue(int(hbar.value() - dx))
+                    vbar.setValue(int(vbar.value() - dy))
+                except Exception:
+                    pass
+            # zaktualizuj pozycję referencyjną
+            self._pan_last_pos = event.pos()
 
     def leaveEvent(self, event):
         if self._main:
@@ -89,6 +110,32 @@ class ImageLabel(QLabel):
                     return
             # fallback
             event.ignore()
+
+    def mousePressEvent(self, event):
+        # Rozpocznij panning przy prawym przycisku
+        if event.button() == Qt.MouseButton.RightButton:
+            self._panning = True
+            self._pan_last_pos = event.pos()
+            try:
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            except Exception:
+                pass
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        # Zakończ panning przy zwolnieniu prawego przycisku
+        if event.button() == Qt.MouseButton.RightButton:
+            self._panning = False
+            self._pan_last_pos = None
+            try:
+                self.unsetCursor()
+            except Exception:
+                pass
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 class MdrLabel(QMainWindow):
     def __init__(self, parent=None):
