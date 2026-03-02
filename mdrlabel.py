@@ -4,23 +4,10 @@
 # https://www.riverbankcomputing.com/static/Docs/PyQt6/index.html
 from PyQt6.QtWidgets import (QApplication, QWidget, QMainWindow, QToolBar,
                              QLabel, QLineEdit, QVBoxLayout, QHBoxLayout,
-                             QStyleFactory, QComboBox, QFileDialog)
+                             QStyleFactory, QComboBox, QFileDialog, QScrollArea)
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QPixmap
 import sys
-import importlib
-
-# Try to import Qt PDF modules at runtime. Use importlib to avoid static import resolution
-try:
-    _qtpdf = importlib.import_module('PyQt6.QtPdf')
-    _qtpdfw = importlib.import_module('PyQt6.QtPdfWidgets')
-    QPdfDocument = getattr(_qtpdf, 'QPdfDocument', None)
-    QPdfView = getattr(_qtpdfw, 'QPdfView', None)
-    PDF_SUPPORT = QPdfDocument is not None and QPdfView is not None
-except Exception:
-    QPdfDocument = None
-    QPdfView = None
-    PDF_SUPPORT = False
 
 class MdrLabel(QMainWindow):
     def __init__(self, parent=None):
@@ -29,7 +16,7 @@ class MdrLabel(QMainWindow):
         self.setGeometry(100, 100, 800, 600)
         self.menu = self.menuBar()
         file_menu = self.menu.addMenu('&File')
-        open_act = QAction('&Open PDF', self)
+        open_act = QAction('&Open Image', self)
         open_act.triggered.connect(self.open_pdf)
         file_menu.addAction(open_act)
         exit_act = QAction('&Exit', self)
@@ -85,42 +72,54 @@ class MdrLabel(QMainWindow):
         # Add toolbar docked to the left (PyQt6 uses the ToolBarArea enum)
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, toolbar)
 
-        # Central area: PDF viewer (if available) or placeholder
+        # Central area: image viewer (QLabel inside QScrollArea)
         central = QWidget()
         central_layout = QVBoxLayout()
         central_layout.setContentsMargins(0, 0, 0, 0)
         central.setLayout(central_layout)
         self.setCentralWidget(central)
 
-        if PDF_SUPPORT:
-            self.pdf_doc = QPdfDocument(self)
-            self.pdf_view = QPdfView()
-            self.pdf_view.setDocument(self.pdf_doc)
-            central_layout.addWidget(self.pdf_view)
-        else:
-            placeholder = QLabel('PDF preview not available (QtPdfWidgets missing)')
-            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            central_layout.addWidget(placeholder)
+        # Image preview components
+        self.image_label = QLabel('No image loaded')
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setMinimumSize(200, 200)
+        self.image_label.setStyleSheet('background: #f0f0f0; border: 1px solid #aaa;')
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setWidget(self.image_label)
+        central_layout.addWidget(self.scroll_area)
+
+        # Keep a reference to the currently loaded pixmap
+        self._pixmap = None
 
     def close_app(self):
         print('zamykam')
         self.close()
 
     def open_pdf(self):
-        """Show file dialog and load selected PDF into the viewer."""
-        path, _ = QFileDialog.getOpenFileName(self, 'Open PDF', '', 'PDF Files (*.pdf)')
+        """Show file dialog and load selected image into the viewer."""
+        path, _ = QFileDialog.getOpenFileName(self, 'Open Image', '', 'Images (*.png *.jpg *.jpeg *.bmp *.gif)')
         if path:
             self.load_pdf(path)
 
     def load_pdf(self, path: str):
-        """Load a PDF file into the PDF viewer if supported. Returns True on success."""
-        if not PDF_SUPPORT:
-            return False
-        # QPdfDocument.load returns an enum/status in some versions; just call and rely on view update
+        """Load an image file into the image viewer. Returns True on success."""
         try:
-            self.pdf_doc.load(path)
+            pix = QPixmap(path)
+            if pix.isNull():
+                # failed to load
+                self.image_label.setText('Failed to load image')
+                self._pixmap = None
+                return False
+            self._pixmap = pix
+            self.image_label.setPixmap(self._pixmap)
+            # Ensure label resizes to pixmap size when not scaled by scroll area
+            self.image_label.adjustSize()
             return True
-        except Exception:
+        except Exception as e:
+            self.image_label.setText(f'Error loading image: {e}')
+            self._pixmap = None
             return False
 
 if __name__ == "__main__":
