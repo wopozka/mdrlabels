@@ -9,6 +9,59 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QPixmap
 import sys
 
+# Dodana pomocnicza klasa QLabel z obsługą ruchu myszy
+class ImageLabel(QLabel):
+    def __init__(self, main_window=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._main = main_window
+        self.setMouseTracking(True)
+
+    def mouseMoveEvent(self, event):
+        # event.position() zwraca pozycję względem widgetu (QPointF)
+        pm = self.pixmap()
+        if pm is None:
+            if self._main:
+                self._main.update_mouse_status(None, None)
+            return
+        p = event.position()
+        x = int(p.x())
+        y = int(p.y())
+        pm_w = pm.width()
+        pm_h = pm.height()
+        lbl_w = self.width()
+        lbl_h = self.height()
+        # Oblicz przesunięcie jeśli pixmapa jest mniejsza niż etykieta i wyśrodkowana
+        offset_x = max((lbl_w - pm_w) // 2, 0)
+        offset_y = max((lbl_h - pm_h) // 2, 0)
+        img_x = x - offset_x
+        img_y = y - offset_y
+        # Sprawdź czy kursor znajduje się nad obrazem
+        if img_x < 0 or img_y < 0 or img_x >= pm_w or img_y >= pm_h:
+            if self._main:
+                self._main.update_mouse_status(None, None)
+        else:
+            if self._main:
+                # Przekaż współrzędne względem aktualnie wyświetlanego pixmapa
+                self._main.update_mouse_status(img_x, img_y)
+
+    def leaveEvent(self, event):
+        if self._main:
+            self._main.update_mouse_status(None, None)
+        super().leaveEvent(event)
+
+    def wheelEvent(self, event):
+        # Jeśli wciśnięty Ctrl -> zoom; w przeciwnym razie pozwól scroll area obsłużyć przewijanie
+        mods = event.modifiers()
+        if mods & Qt.KeyboardModifier.ControlModifier:
+            # angleDelta().y() zawiera wartość w jednostkach 1/8 stopnia; zwykle 120 na krok
+            delta = event.angleDelta().y()
+            if self._main:
+                self._main.change_zoom(delta)
+            event.accept()
+        else:
+            # Nie blokuj — przekaż dalej, aby QScrollArea mogł przewijać
+            event.ignore()
+
 class MdrLabel(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -72,26 +125,76 @@ class MdrLabel(QMainWindow):
         # Add toolbar docked to the left (PyQt6 uses the ToolBarArea enum)
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, toolbar)
 
-        # Central area: image viewer (QLabel inside QScrollArea)
+        # Central area: image viewer (ImageLabel inside QScrollArea)
         central = QWidget()
         central_layout = QVBoxLayout()
         central_layout.setContentsMargins(0, 0, 0, 0)
         central.setLayout(central_layout)
         self.setCentralWidget(central)
 
-        # Image preview components
-        self.image_label = QLabel('No image loaded')
+        # Image preview components (używamy ImageLabel, aby śledzić współrzędne myszy)
+        self.image_label = ImageLabel(self)
+        self.image_label.setText('No image loaded')
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setMinimumSize(200, 200)
         self.image_label.setStyleSheet('background: #f0f0f0; border: 1px solid #aaa;')
 
+        # Pasek statusu do wyświetlania współrzędnych
+        self.statusBar().showMessage('')
+
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
+        # Pokaż belki przewijania kiedy potrzebne (gdy obraz większy niż widok)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setWidget(self.image_label)
         central_layout.addWidget(self.scroll_area)
 
-        # Keep a reference to the currently loaded pixmap
+        # Keep a reference to the currently loaded original pixmap
         self._pixmap = None
+        # Zoom state
+        self._zoom = 1.0
+        self._min_zoom = 0.1
+        self._max_zoom = 5.0
+
+    def update_mouse_status(self, x, y):
+        """Aktualizuje pasek statusu współrzędnymi względem obrazka oraz poziomem zoomu."""
+        zoom_pct = int(self._zoom * 100)
+        if x is None or y is None:
+            self.statusBar().showMessage(f'Zoom: {zoom_pct}%')
+        else:
+            self.statusBar().showMessage(f'X: {x}   Y: {y}   Zoom: {zoom_pct}%')
+
+    def change_zoom(self, delta):
+        """Zmienia poziom zoomu bazując na delta z wheelEvent (angleDelta.y())."""
+        if delta == 0:
+            return
+        # Normalny krok to 120; policz liczbę kroków (może być ułamkowe na touchpadach)
+        steps = delta / 120.0
+        factor_per_step = 1.25
+        new_zoom = self._zoom * (factor_per_step ** steps)
+        # Clamp
+        new_zoom = max(self._min_zoom, min(self._max_zoom, new_zoom))
+        if abs(new_zoom - self._zoom) < 1e-6:
+            return
+        self._zoom = new_zoom
+        self.apply_zoom()
+
+    def apply_zoom(self):
+        """Przeskaluj i ustaw pixmapę zgodnie z aktualnym zoomem."""
+        if self._pixmap is None:
+            # tylko odśwież status
+            self.update_mouse_status(None, None)
+            return
+        orig_w = self._pixmap.width()
+        orig_h = self._pixmap.height()
+        new_w = max(1, round(orig_w * self._zoom))
+        new_h = max(1, round(orig_h * self._zoom))
+        scaled = self._pixmap.scaled(new_w, new_h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        self.image_label.setPixmap(scaled)
+        self.image_label.adjustSize()
+        # Odśwież pasek statusu (bez współrzędnych)
+        self.update_mouse_status(None, None)
 
     def close_app(self):
         print('zamykam')
@@ -112,10 +215,10 @@ class MdrLabel(QMainWindow):
                 self.image_label.setText('Failed to load image')
                 self._pixmap = None
                 return False
+            # store original pixmap (source for rescaling)
             self._pixmap = pix
-            self.image_label.setPixmap(self._pixmap)
-            # Ensure label resizes to pixmap size when not scaled by scroll area
-            self.image_label.adjustSize()
+            self._zoom = 1.0
+            self.apply_zoom()
             return True
         except Exception as e:
             self.image_label.setText(f'Error loading image: {e}')
