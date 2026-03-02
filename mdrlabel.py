@@ -59,8 +59,18 @@ class ImageLabel(QLabel):
                 self._main.change_zoom(delta)
             event.accept()
         else:
-            # Nie blokuj — przekaż dalej, aby QScrollArea mogł przewijać
-            event.ignore()
+            # Przekaż zdarzenie do viewportu QScrollArea — to zapewnia przewijanie gdy obraz jest większy niż viewport
+            if self._main and hasattr(self._main, 'scroll_area') and self._main.scroll_area is not None:
+                try:
+                    viewport = self._main.scroll_area.viewport()
+                    # Wywołanie bezpośrednio viewport().wheelEvent obsługuje przewijanie
+                    viewport.wheelEvent(event)
+                    event.accept()
+                except Exception:
+                    # Fallback: oznacz jako ignore, wtedy mechanizm Qt spróbuje przekazać dalej
+                    event.ignore()
+            else:
+                event.ignore()
 
 class MdrLabel(QMainWindow):
     def __init__(self, parent=None):
@@ -143,8 +153,10 @@ class MdrLabel(QMainWindow):
         self.statusBar().showMessage('')
 
         self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        # Pokaż belki przewijania kiedy potrzebne (gdy obraz większy niż widok)
+        # Nie zmieniamy rozmiaru widgetu automatycznie — chcemy, żeby QLabel zachował rozmiar obrazka
+        # i wtedy QScrollArea pokaże belki przewijania gdy obraz jest większy niż viewport.
+        self.scroll_area.setWidgetResizable(False)
+         # Pokaż belki przewijania kiedy potrzebne (gdy obraz większy niż widok)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setWidget(self.image_label)
@@ -192,9 +204,10 @@ class MdrLabel(QMainWindow):
         new_h = max(1, round(orig_h * self._zoom))
         scaled = self._pixmap.scaled(new_w, new_h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         self.image_label.setPixmap(scaled)
-        self.image_label.adjustSize()
-        # Odśwież pasek statusu (bez współrzędnych)
-        self.update_mouse_status(None, None)
+        # Ustaw dokładny rozmiar widgetu równy rozmiarowi pixmapy — zapewnia to prawidłowe działanie pasków przewijania
+        self.image_label.setFixedSize(scaled.size())
+         # Odśwież pasek statusu (bez współrzędnych)
+         self.update_mouse_status(None, None)
 
     def close_app(self):
         print('zamykam')
