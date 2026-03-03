@@ -9,6 +9,12 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QPixmap
 import sys
 
+# Dodane: PyMuPDF do renderowania stron PDF (import przez nazwę 'pymupdf' zamiast 'fitz')
+try:
+    import pymupdf as fitz
+except Exception:
+    fitz = None
+
 # Dodana pomocnicza klasa QLabel z obsługą ruchu myszy
 class ImageLabel(QLabel):
     def __init__(self, main_window=None, *args, **kwargs):
@@ -144,7 +150,7 @@ class MdrLabel(QMainWindow):
         self.setGeometry(100, 100, 800, 600)
         self.menu = self.menuBar()
         file_menu = self.menu.addMenu('&File')
-        open_act = QAction('&Open Image', self)
+        open_act = QAction('&Open PDF', self)
         open_act.triggered.connect(self.open_pdf)
         file_menu.addAction(open_act)
         exit_act = QAction('&Exit', self)
@@ -165,14 +171,19 @@ class MdrLabel(QMainWindow):
         combo_h = QHBoxLayout()
         combo_h.setContentsMargins(0, 0, 0, 0)
         combo_h.setSpacing(6)
-        lbl_combo = QLabel('select product')
+        lbl_combo = QLabel('select product / page')
         lbl_combo.setFixedWidth(120)
         self.dropdown = QComboBox()
         self.dropdown.setFixedWidth(200)
+        # Domyślnie dropdown wyłączony — aktywujemy go gdy załadujemy PDF
+        self.dropdown.setEnabled(False)
         combo_h.addWidget(lbl_combo)
         combo_h.addWidget(self.dropdown)
         combo_row.setLayout(combo_h)
         vlayout.addWidget(combo_row)
+
+        # Podłącz obsługę zmiany wyboru (używana również do wyboru strony PDF)
+        self.dropdown.currentIndexChanged.connect(self._on_dropdown_changed)
 
         # Helper to add a label + lineedit row
         def add_row(label_text):
@@ -234,6 +245,10 @@ class MdrLabel(QMainWindow):
         self._min_zoom = 0.1
         self._max_zoom = 5.0
 
+        # PDF-related state
+        self._pdf_doc = None
+        self._pdf_page_count = 0
+
     def update_mouse_status(self, x, y):
         """Aktualizuje pasek statusu współrzędnymi względem obrazka oraz poziomem zoomu."""
         zoom_pct = int(self._zoom * 100)
@@ -276,30 +291,87 @@ class MdrLabel(QMainWindow):
 
     def close_app(self):
         print('zamykam')
+        # Close any opened PDF doc
+        try:
+            if self._pdf_doc is not None:
+                try:
+                    self._pdf_doc.close()
+                except Exception:
+                    pass
+                self._pdf_doc = None
+        except Exception:
+            pass
         self.close()
 
     def open_pdf(self):
-        """Show file dialog and load selected image into the viewer."""
-        path, _ = QFileDialog.getOpenFileName(self, 'Open Image', '', 'Images (*.png *.jpg *.jpeg *.bmp *.gif)')
+        """Show file dialog and load selected PDF into the viewer."""
+        # Pozwól wybrać tylko PDF
+        path, _ = QFileDialog.getOpenFileName(self, 'Open PDF', '', 'PDF Files (*.pdf)')
         if path:
-            self.load_pdf(path)
+            # upewnij się, że PyMuPDF jest dostępny
+            if fitz is None:
+                self.image_label.setText('PyMuPDF is not installed')
+                return
+            self.load_pdf_file(path)
 
-    def load_pdf(self, path: str):
-        """Load an image file into the image viewer. Returns True on success."""
+    def load_pdf_file(self, path: str):
+        """Otwórz dokument PDF przy pomocy fitz i wczytaj pierwszą stronę jako obraz."""
         try:
-            pix = QPixmap(path)
-            if pix.isNull():
-                # failed to load
-                self.image_label.setText('Failed to load image')
+            # Zamknij poprzedni dokument jeśli istnieje
+            if self._pdf_doc is not None:
+                try:
+                    self._pdf_doc.close()
+                except Exception:
+                    pass
+                self._pdf_doc = None
+
+            doc = fitz.open(path)
+            self._pdf_doc = doc
+            self._pdf_page_count = doc.page_count
+            # wypełnij dropdown stronami
+            self.dropdown.blockSignals(True)
+            self.dropdown.clear()
+            for i in range(self._pdf_page_count):
+                self.dropdown.addItem(f'Page {i+1}')
+            self.dropdown.setCurrentIndex(0)
+            self.dropdown.blockSignals(False)
+            self.dropdown.setEnabled(True)
+            return self.load_pdf_page(0)
+        except Exception as e:
+            self.image_label.setText(f'Error loading PDF: {e}')
+            self._pdf_doc = None
+            self._pixmap = None
+            self.dropdown.setEnabled(False)
+            return False
+
+    def _on_dropdown_changed(self, idx: int):
+        # Jeśli dropdown reprezentuje wybór strony PDF — załaduj stronę
+        if self._pdf_doc is None:
+            return
+        if idx < 0 or idx >= self._pdf_page_count:
+            return
+        self.load_pdf_page(idx)
+
+    def load_pdf_page(self, index: int):
+        """Renderuje stronę PDF jako obraz i ustawia ją w viewerze."""
+        try:
+            page = self._pdf_doc.load_page(index)
+            # renderowanie w wyższej rozdzielczości dla lepszej jakości
+            mat = fitz.Matrix(2, 2)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            png_bytes = pix.tobytes('png')
+            qpix = QPixmap()
+            qpix.loadFromData(png_bytes)
+            if qpix.isNull():
+                self.image_label.setText('Failed to render PDF page')
                 self._pixmap = None
                 return False
-            # store original pixmap (source for rescaling)
-            self._pixmap = pix
+            self._pixmap = qpix
             self._zoom = 1.0
             self.apply_zoom()
             return True
         except Exception as e:
-            self.image_label.setText(f'Error loading image: {e}')
+            self.image_label.setText(f'Error rendering page: {e}')
             self._pixmap = None
             return False
 
