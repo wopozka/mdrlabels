@@ -20,6 +20,8 @@ except Exception:
     fitz = None
 
 # Dodane: biblioteki do kodów kreskowych
+path = sys.path
+sys.path = ["/home/piotr/projects/python-barcode"] + path
 try:
     import barcode
     from barcode.writer import ImageWriter
@@ -36,6 +38,8 @@ try:
 except Exception:
     Image = None
     ImageDraw = None
+
+from pylibdmtx.pylibdmtx import encode
 
 # Dodana pomocnicza klasa QLabel z obsługą ruchu myszy
 class ImageLabel(QLabel):
@@ -552,17 +556,7 @@ class MdrLabel(QMainWindow):
             return False
 
     def _on_dropdown_changed(self, idx: int):
-        # Jeśli PDF jest załadowany - to zmiana strony
-        if self._pdf_doc is not None:
-            if idx < 0 or idx >= self._pdf_page_count:
-                return
-            self.load_pdf_page(idx)
-        # W przeciwnym razie to zmiana etykiety - wczytaj szablon PDF
-        else:
-            if idx < 0:
-                # Nic nie zaznaczone
-                return
-            self._load_template_pdf(idx)
+        self._load_template_pdf(idx)
 
     def load_pdf_page(self, index: int):
         """Renderuje stronę PDF jako obraz i ustawia ją w viewerze."""
@@ -641,72 +635,6 @@ class MdrLabel(QMainWindow):
         # Nie wybieraj automatycznie - niech użytkownik sam wybierze etykietę
         # Dropdown będzie pusty na początek
 
-    def _update_label_fields(self, idx: int):
-        """Odśwież pola formularza na podstawie wybranej etykiety."""
-        if not self.label_manager or idx < 0:
-            return
-
-        label_names = self.label_manager.get_label_names()
-        if idx >= len(label_names):
-            return
-
-        label_name = label_names[idx]
-        self.current_label = label_name
-
-        # Czyść poprzednie pola dynamiczne
-        self.clear_dynamic_fields()
-
-        # Wczytaj pola z JSON-a
-        fields = self.label_manager.get_fields(label_name)
-        self.populate_dynamic_fields(fields)
-
-    def populate_dynamic_fields(self, fields):
-        """Utwórz pola formularza na podstawie listy pól z JSON-a."""
-        if not fields:
-            return
-
-        # Usuń stare pola jeśli istnieją
-        self.clear_dynamic_fields()
-
-        # Zbierz wszystkie widżety z toolbara
-        toolbar = None
-        for child in self.findChildren(QToolBar):
-            if child.objectName() == 'LeftToolbar' or 'LeftToolbar' in str(type(child)):
-                toolbar = child
-                break
-
-        if not toolbar:
-            return
-
-        # Znajdź kontener layoutu w toolbarze i dodaj pola dynamiczne
-        for widget in toolbar.findChildren(QWidget):
-            if isinstance(widget.layout(), QVBoxLayout):
-                vlayout = widget.layout()
-
-                # Dodaj pola dynamiczne
-                # App_ID (Application Identifier) - unikalny identyfikator pola
-                # zgodnie ze standardami zarządzania identyfikatorami aplikacji
-                for field in fields:
-                    field_name = field.get('name', 'Unknown')
-                    field_key = field.get('App_ID', field_name)
-
-                    row = QWidget()
-                    hl = QHBoxLayout()
-                    hl.setContentsMargins(0, 0, 0, 0)
-                    hl.setSpacing(6)
-
-                    lbl = QLabel(field_name)
-                    lbl.setFixedWidth(120)
-                    le = QLineEdit()
-
-                    hl.addWidget(lbl)
-                    hl.addWidget(le)
-                    row.setLayout(hl)
-
-                    # Wstaw przed stretch
-                    vlayout.insertWidget(vlayout.count() - 1, row)
-                    self.dynamic_fields[field_key] = le
-                break
 
     def clear_dynamic_fields(self):
         """Usuń pola dynamiczne."""
@@ -770,7 +698,20 @@ class MdrLabel(QMainWindow):
 
         # Wczytaj pola formularza dla tej etykiety
         fields = self.label_manager.get_fields(label_name)
-        self.populate_dynamic_fields(fields)
+        # najpierw wyczyść stare pola, potem je wyłącz, a włącz tylko te wymienione w JSONIE
+        for field in self.editable_fields:
+            self.editable_fields[field].clear()
+            self.editable_fields[field].setEnabled(False)
+
+        # wypełnij wartosciami
+        for field in fields:
+            self.editable_fields[field['App_ID']].setEnabled(True)
+            if 'value' in field and field['value']:
+                self.editable_fields[field['App_ID']].setText(field['value'])
+            if 'editable' in field and not field['editable']:
+                self.editable_fields[field['App_ID']].setEnabled(False)
+
+       # self.populate_dynamic_fields(fields)
 
         # Wczytaj PDF szablon
         template_pdf = label_data.get('template_pdf', '')
