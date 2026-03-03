@@ -22,7 +22,7 @@ except Exception:
 
 # Dodane: biblioteki do kodów kreskowych
 path = sys.path
-sys.path = ["/home/piotr/projects/python-barcode"] + path
+sys.path = ["C:\\Users\\pwawrzyniak\\PycharmProjects\\python-barcode"] + path
 try:
     import barcode
     from barcode.writer import ImageWriter
@@ -362,8 +362,6 @@ class MdrLabel(QMainWindow):
 
         # Zmienna do przechowywania bieżącej etykiety
         self.current_label = None
-        self.dynamic_fields = {}  # Przechowuje pola dynamiczne {key: QLineEdit}
-        self.dynamic_fields_container = None  # Kontener na pola dynamiczne
 
         # Helper to add a label + lineedit row
         def add_row(label_text, tooltip=None):
@@ -390,6 +388,20 @@ class MdrLabel(QMainWindow):
         self.editable_fields['BATCH/LOT'] = add_row('Batch')
         self.editable_fields['SERIAL'] = add_row('Serial number')
         self.editable_fields['COUNT'] = add_row('Count')
+
+        # add buttons to toolbar
+        # Fill label
+        row = QWidget()
+        hl = QHBoxLayout()
+        hl.setContentsMargins(0, 0, 0, 0)
+        hl.setSpacing(6)
+        fill_label_button = QPushButton('Fill label')
+        fill_label_button.clicked.connect(self.add_dynamic_data_to_pdf_template)
+        hl.addWidget(fill_label_button)
+        print_button = QPushButton('Print')
+        hl.addWidget(print_button)
+        row.setLayout(hl)
+        vlayout.addWidget(row)
 
         # Add stretch to push rows to top
         vlayout.addStretch()
@@ -524,6 +536,8 @@ class MdrLabel(QMainWindow):
                 self._pdf_doc = None
         except Exception:
             pass
+        for filename in self._temp_pdf_files.append:
+            os.remove(filename)
         self.close()
 
     def open_pdf(self):
@@ -720,40 +734,49 @@ class MdrLabel(QMainWindow):
                 self.image_label.setText(f'Template PDF not found: {template_pdf}')
 
     def add_dynamic_data_to_pdf_template(self):
-        aaa = NamedTemporaryFile(suffix='.pdf', delete=True)
+        aaa = NamedTemporaryFile(suffix='.pdf', delete=False)
         aaa.close()
         self._temp_pdf_files.append(aaa.name)
-        template_pdf = pymupdf.open(self._current_pdf_template_path)
+        template_pdf = fitz.open(self._current_pdf_template_path)
         page = template_pdf[0]
         colour = (1, 0, 0)
         lot = '20260203/0001'
-        lot_point = pymupdf.Point(30, 52)
+        lot_point = fitz.Point(30, 52)
         page.insert_text(lot_point, lot, fontsize=8, color=colour)
         # adding man_date
         man_date = '260203'
-        man_point = pymupdf.Point(30, 72)
+        man_point = fitz.Point(30, 72)
         page.insert_text(man_point, man_date, fontsize=8, color=colour)
         # adding use_by date
         use_by = '290203'
-        use_point = pymupdf.Point(30, 92)
+        use_point = fitz.Point(30, 92)
         page.insert_text(use_point, use_by, fontsize=8, color=colour)
 
+        print('dodaje udi')
+        udi_pi_file = NamedTemporaryFile(delete=False)
+        udi_pi_file.close()
+        if os.path.exists(udi_pi_file.name):
+            print('plik istnieje i ma sie dobrze')
         UDI_DI = '08720299927469'
         udi_di_pi = barcode.codex.Gs1_128_AI((('GTIN', UDI_DI), ('PROD_DATE', man_date), ('USE_BY_OR_EXPIRY', use_by)),
                                              writer=barcode.writer.ImageWriter())
         udi_di_pi.get_fullcode()
-        udi_di_pi.save('/mnt/c/ump/udi_di_pi', {'format': 'PNG', })
+        udi_di_pi.save(udi_pi_file.name, {'format': 'PNG', })
+        print('aaaaaaaaaaaaaa', udi_pi_file.name)
 
         # tworzenie kodu 2d
         # dm = encode ('(01)06009900408439(17)290319(30)01(10)240301'.encode('utf8'))
         # img = Image.frombytes('RGB', (dm.width, dm.height), dm.pixels)
         # img.save('/mnt/c/ump/aaa.png')
 
-        img_rect = pymupdf.Rect(30, 100, 200, 150)  # x0, y0, x1, y1
-        page.insert_image(img_rect, filename="/mnt/c/ump/udi_di_pi.png")
+        img_rect = fitz.Rect(30, 100, 200, 150)  # x0, y0, x1, y1
+        page.insert_image(img_rect, filename=udi_pi_file.name)
 
-        template_pdf.save(filled_pdf)
+
+        # os.remove(udi_pi_file.name)
+        template_pdf.save(self._temp_pdf_files.append[-1])
         template_pdf.close()
+        self.load_pdf_file(self._temp_pdf_files.append[-1])
 
 
 
