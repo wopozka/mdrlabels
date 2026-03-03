@@ -1,0 +1,38 @@
+{
+  "label_name": "Medical Device Label 001",
+  "template_pdf": "template_001.pdf",
+  "udi_di": "58063361",
+  "fields": [
+    {
+      "name": "Use by date",
+      "key": "use_by_date",
+      "type": "text",
+      "format": "DD/MM/YYYY",
+      "pdf_position": {"x": 50, "y": 100, "width": 80, "height": 15},
+      "font_size": 10
+    },
+    {
+      "name": "Batch",
+      "key": "batch",
+      "type": "text",
+      "format": "alphanumeric",
+      "pdf_position": {"x": 50, "y": 130, "width": 80, "height": 15},
+      "font_size": 10
+    },
+    {
+      "name": "Manufacturing date",
+      "key": "manufacturing_date",
+      "type": "text",
+      "format": "DD/MM/YYYY",
+      "pdf_position": {"x": 50, "y": 160, "width": 80, "height": 15},
+      "font_size": 10
+    }
+  ],
+  "barcode": {
+    "type": "gs1-128",
+    "format": "{udi_di}{serial_number}",
+    "pdf_position": {"x": 200, "y": 100, "width": 150, "height": 40},
+    "required_fields": ["serial_number"]
+  }
+}
+

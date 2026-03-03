@@ -1,0 +1,46 @@
+{
+  "label_name": "Medical Device Label - Device B",
+  "template_pdf": "device_b_template.pdf",
+  "udi_di": "87654321",
+  "fields": [
+    {
+      "name": "Expiration Date",
+      "key": "expiration_date",
+      "type": "text",
+      "format": "YYYY-MM-DD",
+      "pdf_position": {"x": 70, "y": 200, "width": 100, "height": 12},
+      "font_size": 9
+    },
+    {
+      "name": "Lot Number",
+      "key": "lot_number",
+      "type": "text",
+      "format": "alphanumeric",
+      "pdf_position": {"x": 70, "y": 225, "width": 100, "height": 12},
+      "font_size": 9
+    },
+    {
+      "name": "Manufactured Date",
+      "key": "manufactured_date",
+      "type": "text",
+      "format": "YYYY-MM-DD",
+      "pdf_position": {"x": 70, "y": 250, "width": 100, "height": 12},
+      "font_size": 9
+    },
+    {
+      "name": "Patient ID",
+      "key": "patient_id",
+      "type": "text",
+      "format": "alphanumeric",
+      "pdf_position": {"x": 70, "y": 275, "width": 100, "height": 12},
+      "font_size": 9
+    }
+  ],
+  "barcode": {
+    "type": "datamatrix",
+    "format": "{udi_di}{lot_number}{patient_id}",
+    "pdf_position": {"x": 250, "y": 200, "width": 80, "height": 80},
+    "required_fields": ["lot_number", "patient_id"]
+  }
+}
+

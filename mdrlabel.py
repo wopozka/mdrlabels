@@ -4,16 +4,38 @@
 # https://www.riverbankcomputing.com/static/Docs/PyQt6/index.html
 from PyQt6.QtWidgets import (QApplication, QWidget, QMainWindow, QToolBar,
                              QLabel, QLineEdit, QVBoxLayout, QHBoxLayout,
-                             QStyleFactory, QComboBox, QFileDialog, QScrollArea)
-from PyQt6.QtCore import Qt
+                             QStyleFactory, QComboBox, QFileDialog, QScrollArea,
+                             QDialog, QPushButton, QSpinBox, QMessageBox)
+from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtGui import QAction, QPixmap
 import sys
+import json
+import os
+from pathlib import Path
 
 # Dodane: PyMuPDF do renderowania stron PDF (import przez nazwę 'pymupdf' zamiast 'fitz')
 try:
     import pymupdf as fitz
 except Exception:
     fitz = None
+
+# Dodane: biblioteki do kodów kreskowych
+try:
+    import barcode
+    from barcode.writer import ImageWriter
+except Exception:
+    barcode = None
+
+try:
+    from datamatrix import DataMatrix
+except Exception:
+    DataMatrix = None
+
+try:
+    from PIL import Image, ImageDraw
+except Exception:
+    Image = None
+    ImageDraw = None
 
 # Dodana pomocnicza klasa QLabel z obsługą ruchu myszy
 class ImageLabel(QLabel):
@@ -148,6 +170,115 @@ class ImageLabel(QLabel):
             return
         super().mouseReleaseEvent(event)
 
+class ConfigDialog(QDialog):
+    """Dialog do konfiguracji lokalizacji folderu Labels."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Configuration')
+        self.setGeometry(100, 100, 500, 100)
+
+        layout = QVBoxLayout()
+
+        # Folder Labels
+        h_folder = QHBoxLayout()
+        lbl_folder = QLabel('Labels folder:')
+        lbl_folder.setFixedWidth(150)
+        self.folder_label = QLineEdit()
+        self.folder_label.setReadOnly(True)
+        btn_folder = QPushButton('Browse...')
+        btn_folder.clicked.connect(self._select_folder)
+        h_folder.addWidget(lbl_folder)
+        h_folder.addWidget(self.folder_label)
+        h_folder.addWidget(btn_folder)
+        layout.addLayout(h_folder)
+
+        # Przyciski OK/Cancel
+        h_buttons = QHBoxLayout()
+        btn_ok = QPushButton('OK')
+        btn_cancel = QPushButton('Cancel')
+        btn_ok.clicked.connect(self.accept)
+        btn_cancel.clicked.connect(self.reject)
+        h_buttons.addStretch()
+        h_buttons.addWidget(btn_ok)
+        h_buttons.addWidget(btn_cancel)
+        layout.addLayout(h_buttons)
+
+        self.setLayout(layout)
+
+        # Załaduj zapisane wartości
+        self.load_config()
+
+    def _select_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, 'Select Labels Folder')
+        if folder:
+            self.folder_label.setText(folder)
+
+    def load_config(self):
+        settings = QSettings('MDRLabel', 'MDRLabel')
+        folder = settings.value('labels_folder', '')
+        self.folder_label.setText(folder)
+
+    def save_config(self):
+        settings = QSettings('MDRLabel', 'MDRLabel')
+        settings.setValue('labels_folder', self.folder_label.text())
+
+    def get_folder(self):
+        return self.folder_label.text()
+
+
+class LabelManager:
+    """Manager do wczytywania i zarządzania etykietami z JSON-ów."""
+    def __init__(self, labels_folder: str):
+        self.labels_folder = labels_folder
+        self.labels = {}
+        self.load_labels()
+
+    def load_labels(self):
+        """Wczytaj wszystkie JSON-y z folderu."""
+        self.labels = {}
+        if not os.path.isdir(self.labels_folder):
+            return
+
+        for filename in os.listdir(self.labels_folder):
+            if filename.endswith('.json'):
+                filepath = os.path.join(self.labels_folder, filename)
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        label_name = data.get('label_name', filename)
+                        self.labels[label_name] = data
+                except Exception as e:
+                    print(f"Error loading {filename}: {e}")
+
+    def get_label_names(self):
+        """Zwróć listę nazw etykiet."""
+        return list(self.labels.keys())
+
+    def get_label(self, label_name: str):
+        """Zwróć definicję etykiety."""
+        return self.labels.get(label_name)
+
+    def get_fields(self, label_name: str):
+        """Zwróć listę pól dla danej etykiety."""
+        label = self.get_label(label_name)
+        if label and 'fields' in label:
+            return label['fields']
+        return []
+
+    def get_udi_di(self, label_name: str):
+        """Zwróć UDI-DI dla danej etykiety."""
+        label = self.get_label(label_name)
+        if label:
+            return label.get('udi_di', '')
+        return ''
+
+    def get_barcode_config(self, label_name: str):
+        """Zwróć konfigurację kodu kreskowego."""
+        label = self.get_label(label_name)
+        if label:
+            return label.get('barcode', {})
+        return {}
+
 class MdrLabel(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -161,6 +292,12 @@ class MdrLabel(QMainWindow):
         exit_act = QAction('&Exit', self)
         exit_act.triggered.connect(self.close_app)
         file_menu.addAction(exit_act)
+
+        # Menu Settings
+        settings_menu = self.menu.addMenu('&Settings')
+        config_act = QAction('&Configuration', self)
+        config_act.triggered.connect(self.show_config_dialog)
+        settings_menu.addAction(config_act)
 
         # Create a left toolbar with three labelled QLineEdit fields
         toolbar = QToolBar('LeftToolbar')
@@ -189,6 +326,16 @@ class MdrLabel(QMainWindow):
 
         # Podłącz obsługę zmiany wyboru (używana również do wyboru strony PDF)
         self.dropdown.currentIndexChanged.connect(self._on_dropdown_changed)
+
+        # Inicjalizuj LabelManager
+        settings = QSettings('MDRLabel', 'MDRLabel')
+        labels_folder = settings.value('labels_folder', '')
+        self.label_manager = LabelManager(labels_folder) if labels_folder else None
+
+        # Zmienna do przechowywania bieżącej etykiety
+        self.current_label = None
+        self.dynamic_fields = {}  # Przechowuje pola dynamiczne {key: QLineEdit}
+        self.dynamic_fields_container = None  # Kontener na pola dynamiczne
 
         # Helper to add a label + lineedit row
         def add_row(label_text):
@@ -382,12 +529,14 @@ class MdrLabel(QMainWindow):
             return False
 
     def _on_dropdown_changed(self, idx: int):
-        # Jeśli dropdown reprezentuje wybór strony PDF — załaduj stronę
-        if self._pdf_doc is None:
-            return
-        if idx < 0 or idx >= self._pdf_page_count:
-            return
-        self.load_pdf_page(idx)
+        # Jeśli PDF jest załadowany - to zmiana strony
+        if self._pdf_doc is not None:
+            if idx < 0 or idx >= self._pdf_page_count:
+                return
+            self.load_pdf_page(idx)
+        # W przeciwnym razie to zmiana etykiety
+        else:
+            self._update_label_fields(idx)
 
     def load_pdf_page(self, index: int):
         """Renderuje stronę PDF jako obraz i ustawia ją w viewerze."""
@@ -430,10 +579,125 @@ class MdrLabel(QMainWindow):
             self._pixmap = None
             return False
 
+    def show_config_dialog(self):
+        """Pokaż dialog konfiguracji."""
+        dialog = ConfigDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            dialog.save_config()
+            # Przeładuj etykiety po zmianie konfiguracji
+            self.reload_labels()
+
+    def reload_labels(self):
+        """Przeładuj etykiety z JSON-ów."""
+        settings = QSettings('MDRLabel', 'MDRLabel')
+        labels_folder = settings.value('labels_folder', '')
+        if labels_folder:
+            self.label_manager = LabelManager(labels_folder)
+            self.update_labels_from_json()
+        else:
+            QMessageBox.warning(self, 'Configuration', 'Please configure the labels folder first.')
+
+    def update_labels_from_json(self):
+        """Wczytaj etykiety do dropdown 'select product'."""
+        if not self.label_manager:
+            return
+
+        label_names = self.label_manager.get_label_names()
+        self.dropdown.blockSignals(True)
+        self.dropdown.clear()
+
+        for label_name in label_names:
+            self.dropdown.addItem(label_name)
+
+        self.dropdown.blockSignals(False)
+        self.dropdown.setEnabled(len(label_names) > 0)
+
+        # Jeśli są etykiety, wybierz pierwszą
+        if len(label_names) > 0:
+            self.dropdown.setCurrentIndex(0)
+            self._update_label_fields(0)
+
+    def _update_label_fields(self, idx: int):
+        """Odśwież pola formularza na podstawie wybranej etykiety."""
+        if not self.label_manager or idx < 0:
+            return
+
+        label_names = self.label_manager.get_label_names()
+        if idx >= len(label_names):
+            return
+
+        label_name = label_names[idx]
+        self.current_label = label_name
+
+        # Czyść poprzednie pola dynamiczne
+        self.clear_dynamic_fields()
+
+        # Wczytaj pola z JSON-a
+        fields = self.label_manager.get_fields(label_name)
+        self.populate_dynamic_fields(fields)
+
+    def populate_dynamic_fields(self, fields):
+        """Utwórz pola formularza na podstawie listy pól z JSON-a."""
+        if not fields:
+            return
+
+        # Usuń stare pola jeśli istnieją
+        self.clear_dynamic_fields()
+
+        # Zbierz wszystkie widżety z toolbara
+        toolbar = None
+        for child in self.findChildren(QToolBar):
+            if child.objectName() == 'LeftToolbar' or 'LeftToolbar' in str(type(child)):
+                toolbar = child
+                break
+
+        if not toolbar:
+            return
+
+        # Znajdź kontener layoutu w toolbarze i dodaj pola dynamiczne
+        for widget in toolbar.findChildren(QWidget):
+            if isinstance(widget.layout(), QVBoxLayout):
+                vlayout = widget.layout()
+
+                # Dodaj pola dynamiczne
+                for field in fields:
+                    field_name = field.get('name', 'Unknown')
+                    field_key = field.get('key', field_name)
+
+                    row = QWidget()
+                    hl = QHBoxLayout()
+                    hl.setContentsMargins(0, 0, 0, 0)
+                    hl.setSpacing(6)
+
+                    lbl = QLabel(field_name)
+                    lbl.setFixedWidth(120)
+                    le = QLineEdit()
+
+                    hl.addWidget(lbl)
+                    hl.addWidget(le)
+                    row.setLayout(hl)
+
+                    # Wstaw przed stretch
+                    vlayout.insertWidget(vlayout.count() - 1, row)
+                    self.dynamic_fields[field_key] = le
+
+                break
+
+    def clear_dynamic_fields(self):
+        """Usuń pola dynamiczne."""
+        for le in self.dynamic_fields.values():
+            try:
+                le.deleteLater()
+            except:
+                pass
+        self.dynamic_fields.clear()
+
 if __name__ == "__main__":
     print('otwieram')
     app = QApplication(sys.argv)
     app.setStyle(QStyleFactory.create("Fusion"))
     w = MdrLabel(None)
+    # Wczytaj etykiety przy starcie
+    w.update_labels_from_json()
     w.show()
     app.exec()
