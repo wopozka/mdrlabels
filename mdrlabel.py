@@ -12,6 +12,7 @@ import sys
 import json
 import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 # Dodane: PyMuPDF do renderowania stron PDF (import przez nazwę 'pymupdf' zamiast 'fitz')
 try:
@@ -438,6 +439,8 @@ class MdrLabel(QMainWindow):
         self._pdf_render_scale = None
         self._pdf_page_width_pts = None
         self._pdf_page_height_pts = None
+        self._temp_pdf_files = []
+        self._current_pdf_template_path = None
 
     def update_mouse_status(self, x, y):
         """Aktualizuje pasek statusu współrzędnymi względem obrazka oraz poziomem zoomu."""
@@ -636,15 +639,6 @@ class MdrLabel(QMainWindow):
         # Dropdown będzie pusty na początek
 
 
-    def clear_dynamic_fields(self):
-        """Usuń pola dynamiczne."""
-        for le in self.dynamic_fields.values():
-            try:
-                le.deleteLater()
-            except:
-                pass
-        self.dynamic_fields.clear()
-
     def _load_configuration(self):
         """Wczytaj konfigurację z pliku w katalogu domowym."""
         config_path = self._get_config_path()
@@ -718,12 +712,19 @@ class MdrLabel(QMainWindow):
         if template_pdf:
             # Załóż że PDF jest w folderze etykiet
             labels_folder = self.label_manager.labels_folder
-            pdf_path = os.path.join(labels_folder, template_pdf)
+            self._current_pdf_template_path = os.path.join(labels_folder, template_pdf)
 
-            if os.path.exists(pdf_path):
-                self.load_pdf_file(pdf_path)
+            if os.path.exists(self._current_pdf_template_path):
+                self.load_pdf_file(self._current_pdf_template_path)
             else:
                 self.image_label.setText(f'Template PDF not found: {template_pdf}')
+
+    def add_dynamic_data_to_pdf_template(self):
+        aaa = NamedTemporaryFile(suffix='.pdf', delete=True)
+        aaa.close()
+        self._temp_pdf_files.append(aaa.name)
+        template_pdf = pymupdf.open(self._current_pdf_template_path)
+
 
 
 if __name__ == "__main__":
