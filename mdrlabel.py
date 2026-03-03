@@ -716,6 +716,41 @@ class MdrLabel(QMainWindow):
                 pass
         self.dynamic_fields.clear()
 
+    def _load_configuration(self):
+        """Wczytaj konfigurację z pliku w katalogu domowym."""
+        config_path = self._get_config_path()
+        try:
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    return config.get('labels_folder', '')
+        except Exception as e:
+            print(f"Error loading configuration: {e}")
+        return ''
+
+    def _save_configuration(self):
+        """Zapisz konfigurację do pliku w katalogu domowym."""
+        if not self.label_manager:
+            return
+
+        config_path = self._get_config_path()
+        try:
+            config = {
+                'labels_folder': self.label_manager.labels_folder
+            }
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"Error saving configuration: {e}")
+
+    def _get_config_path(self):
+        """Zwróć ścieżkę do pliku konfiguracyjnego w katalogu domowym."""
+        home = os.path.expanduser('~')
+        config_dir = os.path.join(home, '.mdrlabel')
+        return os.path.join(config_dir, 'config.json')
+
+
 if __name__ == "__main__":
     print('otwieram')
     app = QApplication(sys.argv)
