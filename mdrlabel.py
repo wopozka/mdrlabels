@@ -52,7 +52,12 @@ class ImageLabel(QLabel):
         else:
             if self._main:
                 # Przekaż współrzędne względem aktualnie wyświetlanego pixmapa
-                self._main.update_mouse_status(img_x, img_y)
+                # ale skonwertowane na współrzędne PDF (punkty)
+                try:
+                    pdf_x, pdf_y = self._main.display_to_pdf_coords(img_x, img_y)
+                except Exception:
+                    pdf_x, pdf_y = img_x, img_y
+                self._main.update_mouse_status(pdf_x, pdf_y)
 
         # Jeśli trwa panning (prawe przycisk wciśnięty) — obsłuż przewijanie
         if self._panning and self._pan_last_pos is not None and self._main and hasattr(self._main, 'scroll_area'):
@@ -248,6 +253,10 @@ class MdrLabel(QMainWindow):
         # PDF-related state
         self._pdf_doc = None
         self._pdf_page_count = 0
+        # PDF rendering info: original page size in PDF points and render scale used to produce pixmap
+        self._pdf_render_scale = None
+        self._pdf_page_width_pts = None
+        self._pdf_page_height_pts = None
 
     def update_mouse_status(self, x, y):
         """Aktualizuje pasek statusu współrzędnymi względem obrazka oraz poziomem zoomu."""
@@ -255,7 +264,35 @@ class MdrLabel(QMainWindow):
         if x is None or y is None:
             self.statusBar().showMessage(f'Zoom: {zoom_pct}%')
         else:
-            self.statusBar().showMessage(f'X: {x}   Y: {y}   Zoom: {zoom_pct}%')
+            # x,y passed here are PDF coordinates (points) when a PDF is loaded
+            try:
+                # format as integers for readability
+                xi = int(x)
+                yi = int(y)
+            except Exception:
+                xi = x
+                yi = y
+            self.statusBar().showMessage(f'PDF X: {xi}   PDF Y: {yi}   Zoom: {zoom_pct}%')
+
+    def display_to_pdf_coords(self, img_x, img_y):
+        """Konwertuje współrzędne pikselowe z wyświetlanego obrazu (img_x,img_y)
+        do współrzędnych w przestrzeni PDF (punkty). Zwraca (pdf_x, pdf_y).
+
+        - img_x/img_y: współrzędne względem lewego-górnego rogu aktualnie wyświetlanego pixmapy (piksele)
+        - pdf_x/pdf_y: współrzędne w punktach PDF (origin w lewym-górnym rogu strony, y liczone od góry)
+        """
+        if self._pdf_doc is None or self._pdf_render_scale is None or self._pdf_page_width_pts is None:
+            # brak PDF -> zwróć współrzędne pikselowe
+            return img_x, img_y
+        try:
+            scale = self._pdf_render_scale * self._zoom
+            # współrzędne w punktach liczymy jako: img_px / (render_scale * zoom)
+            pdf_x = img_x / scale
+            # img_y mierzone od góry -> pdf_y liczony od góry (bez odwracania)
+            pdf_y = img_y / scale
+            return pdf_x, pdf_y
+        except Exception:
+            return img_x, img_y
 
     def change_zoom(self, delta):
         """Zmienia poziom zoomu bazując na delta z wheelEvent (angleDelta.y())."""
@@ -356,8 +393,18 @@ class MdrLabel(QMainWindow):
         """Renderuje stronę PDF jako obraz i ustawia ją w viewerze."""
         try:
             page = self._pdf_doc.load_page(index)
+            # odczytaj oryginalne rozmiary strony w punktach PDF
+            try:
+                rect = page.rect
+                page_w_pts = float(rect.width)
+                page_h_pts = float(rect.height)
+            except Exception:
+                page_w_pts = None
+                page_h_pts = None
             # renderowanie w wyższej rozdzielczości dla lepszej jakości
-            mat = fitz.Matrix(2, 2)
+            # (możesz dostosować mat_scale aby zwiększyć rozdzielczość)
+            mat_scale = 2.0
+            mat = fitz.Matrix(mat_scale, mat_scale)
             pix = page.get_pixmap(matrix=mat, alpha=False)
             png_bytes = pix.tobytes('png')
             qpix = QPixmap()
@@ -367,6 +414,14 @@ class MdrLabel(QMainWindow):
                 self._pixmap = None
                 return False
             self._pixmap = qpix
+            # store PDF page size and render scale for coordinate conversion
+            if page_w_pts is not None and page_h_pts is not None:
+                self._pdf_page_width_pts = page_w_pts
+                self._pdf_page_height_pts = page_h_pts
+            else:
+                self._pdf_page_width_pts = None
+                self._pdf_page_height_pts = None
+            self._pdf_render_scale = mat_scale
             self._zoom = 1.0
             self.apply_zoom()
             return True
