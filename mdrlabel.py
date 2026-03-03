@@ -724,6 +724,37 @@ class MdrLabel(QMainWindow):
         aaa.close()
         self._temp_pdf_files.append(aaa.name)
         template_pdf = pymupdf.open(self._current_pdf_template_path)
+        page = template_pdf[0]
+        colour = (1, 0, 0)
+        lot = '20260203/0001'
+        lot_point = pymupdf.Point(30, 52)
+        page.insert_text(lot_point, lot, fontsize=8, color=colour)
+        # adding man_date
+        man_date = '260203'
+        man_point = pymupdf.Point(30, 72)
+        page.insert_text(man_point, man_date, fontsize=8, color=colour)
+        # adding use_by date
+        use_by = '290203'
+        use_point = pymupdf.Point(30, 92)
+        page.insert_text(use_point, use_by, fontsize=8, color=colour)
+
+        UDI_DI = '08720299927469'
+        udi_di_pi = barcode.codex.Gs1_128_AI((('GTIN', UDI_DI), ('PROD_DATE', man_date), ('USE_BY_OR_EXPIRY', use_by)),
+                                             writer=barcode.writer.ImageWriter())
+        udi_di_pi.get_fullcode()
+        udi_di_pi.save('/mnt/c/ump/udi_di_pi', {'format': 'PNG', })
+
+        # tworzenie kodu 2d
+        # dm = encode ('(01)06009900408439(17)290319(30)01(10)240301'.encode('utf8'))
+        # img = Image.frombytes('RGB', (dm.width, dm.height), dm.pixels)
+        # img.save('/mnt/c/ump/aaa.png')
+
+        img_rect = pymupdf.Rect(30, 100, 200, 150)  # x0, y0, x1, y1
+        page.insert_image(img_rect, filename="/mnt/c/ump/udi_di_pi.png")
+
+        template_pdf.save(filled_pdf)
+        template_pdf.close()
+
 
 
 
