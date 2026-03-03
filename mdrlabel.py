@@ -268,6 +268,8 @@ class LabelManager:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                         label_name = data.get('label_name', filename)
+                        if label_name in self.labels:
+                            print(f'Error: Duplicate label name "{label_name}" in file {filename}. Skipping.')
                         self.labels[label_name] = data
                 except Exception as e:
                     print(f"Error loading {filename}: {e}")
@@ -335,7 +337,7 @@ class MdrLabel(QMainWindow):
         combo_h = QHBoxLayout()
         combo_h.setContentsMargins(0, 0, 0, 0)
         combo_h.setSpacing(6)
-        lbl_combo = QLabel('select product / page')
+        lbl_combo = QLabel('select product')
         lbl_combo.setFixedWidth(120)
         self.dropdown = QComboBox()
         self.dropdown.setFixedWidth(200)
@@ -535,20 +537,11 @@ class MdrLabel(QMainWindow):
             doc = fitz.open(path)
             self._pdf_doc = doc
             self._pdf_page_count = doc.page_count
-            # wypełnij dropdown stronami
-            self.dropdown.blockSignals(True)
-            self.dropdown.clear()
-            for i in range(self._pdf_page_count):
-                self.dropdown.addItem(f'Page {i+1}')
-            self.dropdown.setCurrentIndex(0)
-            self.dropdown.blockSignals(False)
-            self.dropdown.setEnabled(True)
             return self.load_pdf_page(0)
         except Exception as e:
             self.image_label.setText(f'Error loading PDF: {e}')
             self._pdf_doc = None
             self._pixmap = None
-            self.dropdown.setEnabled(False)
             return False
 
     def _on_dropdown_changed(self, idx: int):
@@ -557,9 +550,12 @@ class MdrLabel(QMainWindow):
             if idx < 0 or idx >= self._pdf_page_count:
                 return
             self.load_pdf_page(idx)
-        # W przeciwnym razie to zmiana etykiety
+        # W przeciwnym razie to zmiana etykiety - wczytaj szablon PDF
         else:
-            self._update_label_fields(idx)
+            if idx < 0:
+                # Nic nie zaznaczone
+                return
+            self._load_template_pdf(idx)
 
     def load_pdf_page(self, index: int):
         """Renderuje stronę PDF jako obraz i ustawia ją w viewerze."""
@@ -633,11 +629,10 @@ class MdrLabel(QMainWindow):
 
         self.dropdown.blockSignals(False)
         self.dropdown.setEnabled(len(label_names) > 0)
+        self.dropdown.setCurrentIndex(-1)
 
-        # Jeśli są etykiety, wybierz pierwszą
-        if len(label_names) > 0:
-            self.dropdown.setCurrentIndex(0)
-            self._update_label_fields(0)
+        # Nie wybieraj automatycznie - niech użytkownik sam wybierze etykietę
+        # Dropdown będzie pusty na początek
 
     def _update_label_fields(self, idx: int):
         """Odśwież pola formularza na podstawie wybranej etykiety."""
@@ -749,6 +744,39 @@ class MdrLabel(QMainWindow):
         home = os.path.expanduser('~')
         config_dir = os.path.join(home, '.mdrlabel')
         return os.path.join(config_dir, 'config.json')
+
+    def _load_template_pdf(self, label_idx: int):
+        """Wczytaj PDF szablon dla wybranej etykiety i jej pola formularza."""
+        if not self.label_manager or label_idx < 0:
+            return
+
+        label_names = self.label_manager.get_label_names()
+        if label_idx >= len(label_names):
+            return
+
+        label_name = label_names[label_idx]
+        self.current_label = label_name
+
+        # Pobierz dane etykiety
+        label_data = self.label_manager.get_label(label_name)
+        if not label_data:
+            return
+
+        # Wczytaj pola formularza dla tej etykiety
+        fields = self.label_manager.get_fields(label_name)
+        self.populate_dynamic_fields(fields)
+
+        # Wczytaj PDF szablon
+        template_pdf = label_data.get('template_pdf', '')
+        if template_pdf:
+            # Załóż że PDF jest w folderze etykiet
+            labels_folder = self.label_manager.labels_folder
+            pdf_path = os.path.join(labels_folder, template_pdf)
+
+            if os.path.exists(pdf_path):
+                self.load_pdf_file(pdf_path)
+            else:
+                self.image_label.setText(f'Template PDF not found: {template_pdf}')
 
 
 if __name__ == "__main__":
