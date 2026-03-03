@@ -54,7 +54,7 @@ python mdrlabel.py
 
 ## 5. Struktura JSON-a
 
-Każdy plik JSON powinien zawierać:
+Każdy plik JSON powinien zawierać. **Ważne:** każde pole musi mieć unikalny **App_ID** (Application Identifier) - identyfikator zgodnie ze standardami zarządzania identyfikatorami aplikacji, który jest używany do mapowania danych z formularza na dokument PDF.
 
 ```json
 {
@@ -64,7 +64,7 @@ Każdy plik JSON powinien zawierać:
   "fields": [
     {
       "name": "Nazwa wyświetlana w formularzu",
-      "key": "klucz_pola",
+      "App_ID": "klucz_pola",
       "type": "text",
       "format": "DD/MM/YYYY",
       "pdf_position": {"x": 50, "y": 100, "width": 80, "height": 15},
@@ -117,5 +117,7 @@ Aby znaleźć współrzędne:
 **Błędy przy importach**
 - Uruchom `pip install -r requirements.txt` ponownie
 - Sprawdź czy Python 3.7+ jest zainstalowany: `python --version`
+
+
 
 

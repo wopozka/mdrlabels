@@ -40,6 +40,8 @@
 
 ## Struktura pola (fields[])
 
+**Ważne:** Każde pole identyfikowane jest poprzez **App_ID** (Application Identifier) - unikalny identyfikator zgodnie ze standardami zarządzania identyfikatorami aplikacji. App_ID jest używany wewnętrznie przez aplikację do mapowania wartości z formularza na pozycje w dokumencie PDF.
+
 ```json
 {
   "name": "string",
@@ -57,12 +59,12 @@
 **Opis:** Etykieta pola wyświetlana w formularzu  
 **Przykład:** `"Use by date"`
 
-### key
+### App_ID
 **Typ:** string  
 **Wymagane:** tak  
-**Opis:** Unikalny identyfikator pola (używany wewnętrznie)  
+**Opis:** Application Identifier - unikalny identyfikator pola (używany wewnętrznie), zgodnie ze standardami zarządzania identyfikatorami aplikacji  
 **Przykład:** `"use_by_date"`
-**Uwaga:** Powinno być unique w obrębie pola "fields"
+**Uwaga:** Powinno być unique w obrębie pola "fields". Używa konwencji snake_case (małe litery z podkreśleniami)
 
 ### type
 **Typ:** string  
@@ -164,7 +166,7 @@
   "fields": [
     {
       "name": "Use by date",
-      "key": "use_by_date",
+      "App_ID": "use_by_date",
       "type": "date",
       "format": "DD/MM/YYYY",
       "pdf_position": {"x": 50, "y": 100, "width": 80, "height": 15},
@@ -172,7 +174,7 @@
     },
     {
       "name": "Batch Number",
-      "key": "batch",
+      "App_ID": "batch",
       "type": "alphanumeric",
       "format": "alphanumeric",
       "pdf_position": {"x": 50, "y": 130, "width": 80, "height": 15},
@@ -180,7 +182,7 @@
     },
     {
       "name": "Manufacturing Date",
-      "key": "manufacturing_date",
+      "App_ID": "manufacturing_date",
       "type": "date",
       "format": "DD/MM/YYYY",
       "pdf_position": {"x": 50, "y": 160, "width": 80, "height": 15},
@@ -188,7 +190,7 @@
     },
     {
       "name": "Serial Number",
-      "key": "serial_number",
+      "App_ID": "serial_number",
       "type": "alphanumeric",
       "pdf_position": {"x": 200, "y": 100, "width": 100, "height": 15},
       "font_size": 10

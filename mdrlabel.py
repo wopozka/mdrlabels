@@ -212,15 +212,37 @@ class ConfigDialog(QDialog):
         folder = QFileDialog.getExistingDirectory(self, 'Select Labels Folder')
         if folder:
             self.folder_label.setText(folder)
+            # Zapisz od razu po wyborze folderu
+            self.save_config()
 
     def load_config(self):
-        settings = QSettings('MDRLabel', 'MDRLabel')
-        folder = settings.value('labels_folder', '')
-        self.folder_label.setText(folder)
+        config_path = self._get_config_path()
+        try:
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    folder = config.get('labels_folder', '')
+                    self.folder_label.setText(folder)
+        except Exception as e:
+            print(f"Error loading config: {e}")
 
     def save_config(self):
-        settings = QSettings('MDRLabel', 'MDRLabel')
-        settings.setValue('labels_folder', self.folder_label.text())
+        config_path = self._get_config_path()
+        try:
+            config = {
+                'labels_folder': self.folder_label.text()
+            }
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"Error saving config: {e}")
+
+    def _get_config_path(self):
+        """Zwróć ścieżkę do pliku konfiguracyjnego w katalogu domowym."""
+        home = os.path.expanduser('~')
+        config_dir = os.path.join(home, '.mdrlabel')
+        return os.path.join(config_dir, 'config.json')
 
     def get_folder(self):
         return self.folder_label.text()
@@ -328,8 +350,7 @@ class MdrLabel(QMainWindow):
         self.dropdown.currentIndexChanged.connect(self._on_dropdown_changed)
 
         # Inicjalizuj LabelManager
-        settings = QSettings('MDRLabel', 'MDRLabel')
-        labels_folder = settings.value('labels_folder', '')
+        labels_folder = self._load_configuration()
         self.label_manager = LabelManager(labels_folder) if labels_folder else None
 
         # Zmienna do przechowywania bieżącej etykiety
@@ -475,6 +496,8 @@ class MdrLabel(QMainWindow):
 
     def close_app(self):
         print('zamykam')
+        # Zapisz konfigurację przed zamknięciem
+        self._save_configuration()
         # Close any opened PDF doc
         try:
             if self._pdf_doc is not None:
@@ -589,8 +612,7 @@ class MdrLabel(QMainWindow):
 
     def reload_labels(self):
         """Przeładuj etykiety z JSON-ów."""
-        settings = QSettings('MDRLabel', 'MDRLabel')
-        labels_folder = settings.value('labels_folder', '')
+        labels_folder = self._load_configuration()
         if labels_folder:
             self.label_manager = LabelManager(labels_folder)
             self.update_labels_from_json()
@@ -660,9 +682,11 @@ class MdrLabel(QMainWindow):
                 vlayout = widget.layout()
 
                 # Dodaj pola dynamiczne
+                # App_ID (Application Identifier) - unikalny identyfikator pola
+                # zgodnie ze standardami zarządzania identyfikatorami aplikacji
                 for field in fields:
                     field_name = field.get('name', 'Unknown')
-                    field_key = field.get('key', field_name)
+                    field_key = field.get('App_ID', field_name)
 
                     row = QWidget()
                     hl = QHBoxLayout()

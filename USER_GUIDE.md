@@ -78,7 +78,7 @@ Aplikacja automatycznie generuje pola na podstawie JSON-a. Każde pole może mie
 - Własną etykietę (label)
 - Własny typ danych (text, date, number, alphanumeric)
 - Swoją pozycję na PDF-ie
-
+- Unikalny **App_ID** (Application Identifier) - identyfikator zgodnie ze standardami zarządzania identyfikatorami aplikacji
 ### Domyślne pola
 - **Use by date**: Data ważności (zapamiętana w panelu)
 - **Batch**: Numer partii (zapamiętana w panelu)

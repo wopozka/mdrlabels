@@ -5,7 +5,7 @@
   "fields": [
     {
       "name": "Use by date",
-      "key": "use_by_date",
+      "App_ID": "use_by_date",
       "type": "text",
       "format": "DD/MM/YYYY",
       "pdf_position": {"x": 50, "y": 100, "width": 80, "height": 15},
@@ -13,7 +13,7 @@
     },
     {
       "name": "Batch",
-      "key": "batch",
+      "App_ID": "batch",
       "type": "text",
       "format": "alphanumeric",
       "pdf_position": {"x": 50, "y": 130, "width": 80, "height": 15},
@@ -21,7 +21,7 @@
     },
     {
       "name": "Manufacturing date",
-      "key": "manufacturing_date",
+      "App_ID": "manufacturing_date",
       "type": "text",
       "format": "DD/MM/YYYY",
       "pdf_position": {"x": 50, "y": 160, "width": 80, "height": 15},
@@ -35,4 +35,5 @@
     "required_fields": ["serial_number"]
   }
 }
+
 

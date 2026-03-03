@@ -263,7 +263,7 @@ python mdrlabel.py
 
 # Konfiguracja
 1. Settings → Configuration
-2. Wskaż foldery
+2. Wskaż folder Labels (zawierający JSON-y i PDF-y)
 3. Restart aplikacji
 ```
 
@@ -271,8 +271,9 @@ python mdrlabel.py
 
 ### Test 1: Konfiguracja
 - Otwórz Settings → Configuration
-- Wybierz foldery
+- Wybierz folder Labels
 - Kliknij OK
+- Sprawdź czy etykiety się załadowały
 - Sprawdź czy etykiety się załadowały
 
 ### Test 2: Dynamiczne Pola
