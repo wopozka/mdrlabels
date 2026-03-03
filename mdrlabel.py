@@ -361,12 +361,14 @@ class MdrLabel(QMainWindow):
         self.dynamic_fields_container = None  # Kontener na pola dynamiczne
 
         # Helper to add a label + lineedit row
-        def add_row(label_text):
+        def add_row(label_text, tooltip=None):
             row = QWidget()
             hl = QHBoxLayout()
             hl.setContentsMargins(0, 0, 0, 0)
             hl.setSpacing(6)
             lbl = QLabel(label_text)
+            if tooltip is not None:
+                lbl.setToolTip(tooltip)
             lbl.setFixedWidth(120)  # keep labels aligned
             le = QLineEdit()
             hl.addWidget(lbl)
@@ -375,9 +377,14 @@ class MdrLabel(QMainWindow):
             vlayout.addWidget(row)
             return le
 
-        self.use_by_edit = add_row('Use by date')
-        self.batch_edit = add_row('Batch')
-        self.mfg_edit = add_row('Manufacturing date')
+        self.editable_fields = dict()
+        self.editable_fields['PROD_DATE'] = add_row('Manufacturing date', tooltip='Format daty: YYYY-MM-DD')
+        self.editable_fields['PROD_DATE'].setToolTip('Format daty: YYYY-MM-DD')
+        self.editable_fields['BEST_BEFORE'] = add_row('Use by date', tooltip='Format daty: YYYY-MM-DD')
+        self.editable_fields['BEST_BEFORE'].setToolTip('Format daty: YYYY-MM-DD')
+        self.editable_fields['BATCH/LOT'] = add_row('Batch')
+        self.editable_fields['SERIAL'] = add_row('Serial number')
+        self.editable_fields['COUNT'] = add_row('Count')
 
         # Add stretch to push rows to top
         vlayout.addStretch()
@@ -699,7 +706,6 @@ class MdrLabel(QMainWindow):
                     # Wstaw przed stretch
                     vlayout.insertWidget(vlayout.count() - 1, row)
                     self.dynamic_fields[field_key] = le
-
                 break
 
     def clear_dynamic_fields(self):
