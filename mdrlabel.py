@@ -6,13 +6,14 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QMainWindow, QToolBar,
                              QLabel, QLineEdit, QVBoxLayout, QHBoxLayout,
                              QStyleFactory, QComboBox, QFileDialog, QScrollArea,
                              QDialog, QPushButton, QSpinBox, QMessageBox)
-from PyQt6.QtCore import Qt, QSettings
-from PyQt6.QtGui import QAction, QPixmap
+from PyQt6.QtCore import Qt, QSettings, QRegularExpression
+from PyQt6.QtGui import QAction, QPixmap, QRegularExpressionValidator
 import sys
 import json
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from collections import OrderedDict
 
 # Dodane: PyMuPDF do renderowania stron PDF (import przez nazwę 'pymupdf' zamiast 'fitz')
 try:
@@ -380,14 +381,18 @@ class MdrLabel(QMainWindow):
             vlayout.addWidget(row)
             return le
 
+        date_regex = QRegularExpression(r'^\d{4}-\d{2}-\d{2}$')
+        date_validator = QRegularExpressionValidator(date_regex)
         self.editable_fields = dict()
         self.editable_fields['PROD_DATE'] = add_row('Manufacturing date', tooltip='Format daty: YYYY-MM-DD')
         self.editable_fields['PROD_DATE'].setToolTip('Format daty: YYYY-MM-DD')
+        self.editable_fields['PROD_DATE'].setValidator(date_validator)
         self.editable_fields['BEST_BEFORE'] = add_row('Use by date', tooltip='Format daty: YYYY-MM-DD')
         self.editable_fields['BEST_BEFORE'].setToolTip('Format daty: YYYY-MM-DD')
+        self.editable_fields['BEST_BEFORE'].setValidator(date_validator)
         self.editable_fields['BATCH/LOT'] = add_row('Batch')
         self.editable_fields['SERIAL'] = add_row('Serial number')
-        self.editable_fields['COUNT'] = add_row('Count')
+        self.editable_fields['VAR_COUNT'] = add_row('Count')
 
         # add buttons to toolbar
         # Fill label
@@ -713,6 +718,9 @@ class MdrLabel(QMainWindow):
 
         # wypełnij wartosciami
         for field in fields:
+            if field['App_ID'] not in self.editable_fields:
+                # obsluzyc sytuacje gdy JSON zawiera pole, którego nie ma w interfejsie
+                continue
             self.editable_fields[field['App_ID']].setEnabled(True)
             if 'value' in field and field['value']:
                 self.editable_fields[field['App_ID']].setText(field['value'])
@@ -734,50 +742,60 @@ class MdrLabel(QMainWindow):
                 self.image_label.setText(f'Template PDF not found: {template_pdf}')
 
     def add_dynamic_data_to_pdf_template(self):
+        label_data = self.label_manager.get_label(self.current_label)
+        if label_data is None:
+            return
+        UDI = OrderedDict({'GTIN':  self.label_manager.get_udi_di(self.current_label)})
         aaa = NamedTemporaryFile(suffix='.pdf', delete=False)
         aaa.close()
         self._temp_pdf_files.append(aaa.name)
         template_pdf = fitz.open(self._current_pdf_template_path)
         page = template_pdf[0]
         colour = (1, 0, 0)
-        lot = '20260203/0001'
-        lot_point = fitz.Point(30, 52)
-        page.insert_text(lot_point, lot, fontsize=8, color=colour)
-        # adding man_date
-        man_date = '260203'
-        man_point = fitz.Point(30, 72)
-        page.insert_text(man_point, man_date, fontsize=8, color=colour)
-        # adding use_by date
-        use_by = '290203'
-        use_point = fitz.Point(30, 92)
-        page.insert_text(use_point, use_by, fontsize=8, color=colour)
+        barcode_data = label_data['barcode']
+        for app_id in barcode_data['required_App_IDs']:
+            UDI[app_id] = ''
+        for field_to_fill in label_data['fields']:
+            x = field_to_fill['pdf_position']['x']
+            y = field_to_fill['pdf_position']['y']
+            point = fitz.Point(x, y)
+            if field_to_fill['App_ID'] in self.editable_fields:
+                text = self.editable_fields[field_to_fill['App_ID']].text()
+            else:
+                text = f'Błąd: json zawiera niezdefiniowane pole {field_to_fill['App_ID']}'
+            page.insert_text(point, text, fontsize=8, color=colour)
+            if field_to_fill['App_ID'] in barcode_data['required_App_IDs']:
+                if field_to_fill['App_ID'] in ('BEST_BEFORE', 'PROD_DATE'):
+                    text_to_udi = text.split('-')
+                    UDI[field_to_fill['App_ID']] = text_to_udi[0][2:4] + text_to_udi[1] + text_to_udi[2]
+                else:
+                    UDI[field_to_fill['App_ID']]= text
 
-        print('dodaje udi')
-        udi_pi_file = NamedTemporaryFile(delete=False)
+
+        udi_pi_file = NamedTemporaryFile(dir= 'c:\\ump', suffix='.png', delete=False)
         udi_pi_file.close()
-        if os.path.exists(udi_pi_file.name):
-            print('plik istnieje i ma sie dobrze')
-        UDI_DI = '08720299927469'
-        udi_di_pi = barcode.codex.Gs1_128_AI((('GTIN', UDI_DI), ('PROD_DATE', man_date), ('USE_BY_OR_EXPIRY', use_by)),
-                                             writer=barcode.writer.ImageWriter())
-        udi_di_pi.get_fullcode()
-        udi_di_pi.save(udi_pi_file.name, {'format': 'PNG', })
-        print('aaaaaaaaaaaaaa', udi_pi_file.name)
+        # udi_di_pi = barcode.codex.Gs1_128_AI([(key, UDI[key],) for key in UDI], writer=barcode.writer.ImageWriter())
+        udi_di_pi = barcode.codex.Gs1_128_AI(UDI, writer=barcode.writer.ImageWriter())
+        # print(udi_di_pi.get_fullcode())
+        print(udi_pi_file.name)
+        udi_di_pi.save(os.path.splitext(udi_pi_file.name)[0], {'format': 'PNG', })
+
+        # barcode part
+        x1 = barcode_data['pdf_position']['x']
+        x2 = barcode_data['pdf_position']['x'] + barcode_data['pdf_position']['width']
+        y1 = barcode_data['pdf_position']['y']
+        y2 = barcode_data['pdf_position']['y'] + barcode_data['pdf_position']['height']
+        img_rect = fitz.Rect(x1, y1, x2, y2)
 
         # tworzenie kodu 2d
         # dm = encode ('(01)06009900408439(17)290319(30)01(10)240301'.encode('utf8'))
         # img = Image.frombytes('RGB', (dm.width, dm.height), dm.pixels)
         # img.save('/mnt/c/ump/aaa.png')
-
-        img_rect = fitz.Rect(30, 100, 200, 150)  # x0, y0, x1, y1
         page.insert_image(img_rect, filename=udi_pi_file.name)
-
-
-        # os.remove(udi_pi_file.name)
-        template_pdf.save(self._temp_pdf_files.append[-1])
+        template_pdf.save(self._temp_pdf_files[-1])
         template_pdf.close()
-        self.load_pdf_file(self._temp_pdf_files.append[-1])
-
+        self.load_pdf_file(self._temp_pdf_files[-1])
+        os.remove(udi_pi_file.name)
 
 
 
