@@ -776,7 +776,8 @@ class MdrLabel(QMainWindow):
         udi_pi_file.close()
         # udi_di_pi = barcode.codex.Gs1_128_AI([(key, UDI[key],) for key in UDI], writer=barcode.writer.ImageWriter())
         udi_di_pi = barcode.codex.Gs1_128_AI(UDI, writer=barcode.writer.ImageWriter())
-        # print(udi_di_pi.get_fullcode())
+        print(udi_di_pi.get_fullcode())
+        print(udi_di_pi.get_fullcode(astext=False))
         print(udi_pi_file.name)
         udi_di_pi.save(os.path.splitext(udi_pi_file.name)[0], {'format': 'PNG', })
 
