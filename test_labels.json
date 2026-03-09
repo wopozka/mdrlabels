@@ -1,0 +1,69 @@
+{
+  "label_name": "Test label",
+  "template_pdf": "test_labels.pdf",
+  "udi_di": "08720299927469",
+  "fields": [
+    {
+      "name": "Use by date",
+      "App_ID": "BEST_BEFORE",
+      "format": "YYMMDD",
+      "pdf_position": {"x": 93, "y": 135, "width": 80, "height": 15},
+      "font_size": 10,
+      "value": "2026-11-12",
+      "editable": 1
+    },
+    {
+      "name": "Batch/Lot",
+      "App_ID": "BATCH/LOT",
+      "format": "alphanumeric",
+      "pdf_position": {"x": 93, "y": 105, "width": 80, "height": 15},
+      "font_size": 10,
+      "value": "",
+      "editable": 1
+    },
+    {
+      "name": "Manufacturing date",
+      "App_ID": "PROD_DATE",
+      "format": "YYMMDD",
+      "pdf_position": {"x": 93, "y": 80, "width": 80, "height": 15},
+      "font_size": 10,
+      "value": "",
+      "editable": 1
+    },
+    {
+      "name": "Serial Number",
+      "App_ID": "SERIAL",
+      "format": "alphanumeric",
+      "pdf_position": {"x": 200, "y": 100, "width": 100, "height": 15},
+      "font_size": 10,
+      "value": "",
+      "editable": 0
+    },
+    {
+      "name": "Count",
+      "App_ID": "VAR_COUNT",
+      "format": "numeric",
+      "pdf_position": {"x": 200, "y": 100, "width": 100, "height": 15},
+      "font_size": 10,
+      "value": "",
+      "editable": 0
+    }
+  ],
+  "barcodes": [
+    {
+      "name": "udi1",
+      "type": "gs1-128",
+      "pdf_position": {"x": 70, "y": 180, "width": 170, "height": 50},
+      "value": "",
+      "required_App_IDs": ["BEST_BEFORE", "BATCH/LOT", "PROD_DATE"]
+    },
+    {
+      "name": "udi2",
+      "type": "gs1-128",
+      "pdf_position": {"x": 70, "y": 265, "width": 170, "height": 50},
+      "value": "",
+      "required_App_IDs": ["BEST_BEFORE", "BATCH/LOT", "PROD_DATE"]
+    }
+  ]
+}
+
