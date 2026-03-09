@@ -780,26 +780,33 @@ class MdrLabel(QMainWindow):
             udi_pi_file = NamedTemporaryFile(dir='c:\\ump', suffix='.png', delete=False)
             udi_pi_file.close()
             # udi_di_pi = barcode.codex.Gs1_128_AI([(key, UDI[key],) for key in UDI], writer=barcode.writer.ImageWriter())
-            udi_di_pi = barcode.codex.Gs1_128_AI(UDI[bcd["name"]], writer=barcode.writer.ImageWriter())
-            print(udi_di_pi.get_fullcode())
-            print(udi_di_pi.get_fullcode(astext=False))
-            print(udi_pi_file.name)
-            udi_di_pi.save(os.path.splitext(udi_pi_file.name)[0], {'format': 'PNG', })
-            x1 = bcd['pdf_position']['x']
-            x2 = bcd['pdf_position']['x'] + bcd['pdf_position']['width']
-            y1 = bcd['pdf_position']['y']
-            y2 = bcd['pdf_position']['y'] + bcd['pdf_position']['height']
-            img_rect = fitz.Rect(x1, y1, x2, y2)
-
-        # tworzenie kodu 2d
-        # dm = encode ('(01)06009900408439(17)290319(30)01(10)240301'.encode('utf8'))
-        # img = Image.frombytes('RGB', (dm.width, dm.height), dm.pixels)
-        # img.save('/mnt/c/ump/aaa.png')
-            page.insert_image(img_rect, filename=udi_pi_file.name)
-        template_pdf.save(self._temp_pdf_files[-1])
+            barcode_created = True
+            if bcd['type'] == 'gs1-128':
+                udi_di_pi = barcode.codex.Gs1_128_AI(UDI[bcd["name"]], writer=barcode.writer.ImageWriter())
+                print(udi_di_pi.get_fullcode())
+                print(udi_di_pi.get_fullcode(astext=False))
+                print(udi_pi_file.name)
+                udi_di_pi.save(os.path.splitext(udi_pi_file.name)[0], {'format': 'PNG', })
+            elif bcd['type'] == 'gs1-datamatrix':
+                udi_di_pi = barcode.codex.Gs1_128_AI(UDI[bcd["name"]])
+                dm = encode(udi_di_pi.get_fullcode().encode('utf8'))
+                img = Image.frombytes('RGB', (dm.width, dm.height), dm.pixels)
+                img.save(udi_pi_file.name)
+            else:
+                barcode_created = False
+            if barcode_created:
+                x1 = bcd['pdf_position']['x']
+                x2 = bcd['pdf_position']['x'] + bcd['pdf_position']['width']
+                y1 = bcd['pdf_position']['y']
+                y2 = bcd['pdf_position']['y'] + bcd['pdf_position']['height']
+                img_rect = fitz.Rect(x1, y1, x2, y2)
+                page.insert_image(img_rect, filename=udi_pi_file.name)
+                template_pdf.save(self._temp_pdf_files[-1])
+            os.remove(udi_pi_file.name)
         template_pdf.close()
         self.load_pdf_file(self._temp_pdf_files[-1])
-        os.remove(udi_pi_file.name)
+
+
 
 
 
