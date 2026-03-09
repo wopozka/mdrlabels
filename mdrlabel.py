@@ -745,16 +745,18 @@ class MdrLabel(QMainWindow):
         label_data = self.label_manager.get_label(self.current_label)
         if label_data is None:
             return
-        UDI = OrderedDict({'GTIN':  self.label_manager.get_udi_di(self.current_label)})
+        barcode_data = label_data['barcodes']
+        UDI = {bcd['name']: OrderedDict({'GTIN':  self.label_manager.get_udi_di(self.current_label)}) for bcd in barcode_data}
         aaa = NamedTemporaryFile(suffix='.pdf', delete=False)
         aaa.close()
         self._temp_pdf_files.append(aaa.name)
         template_pdf = fitz.open(self._current_pdf_template_path)
         page = template_pdf[0]
         colour = (1, 0, 0)
-        barcode_data = label_data['barcode']
-        for app_id in barcode_data['required_App_IDs']:
-            UDI[app_id] = ''
+        for bcd in barcode_data:
+            print(bcd)
+            for app_id in bcd['required_App_IDs']:
+                UDI[bcd["name"]][app_id] = ''
         for field_to_fill in label_data['fields']:
             x = field_to_fill['pdf_position']['x']
             y = field_to_fill['pdf_position']['y']
@@ -764,35 +766,36 @@ class MdrLabel(QMainWindow):
             else:
                 text = f'Błąd: json zawiera niezdefiniowane pole {field_to_fill['App_ID']}'
             page.insert_text(point, text, fontsize=8, color=colour)
-            if field_to_fill['App_ID'] in barcode_data['required_App_IDs']:
-                if field_to_fill['App_ID'] in ('BEST_BEFORE', 'PROD_DATE'):
-                    text_to_udi = text.split('-')
-                    UDI[field_to_fill['App_ID']] = text_to_udi[0][2:4] + text_to_udi[1] + text_to_udi[2]
-                else:
-                    UDI[field_to_fill['App_ID']]= text
+            for bcd in barcode_data:
+                if field_to_fill['App_ID'] in bcd['required_App_IDs']:
+                    if field_to_fill['App_ID'] in ('BEST_BEFORE', 'PROD_DATE'):
+                        text_to_udi = text.split('-')
+                        UDI[bcd["name"]][field_to_fill['App_ID']] = text_to_udi[0][2:4] + text_to_udi[1] + text_to_udi[2]
+                    else:
+                        UDI[bcd["name"]][field_to_fill['App_ID']]= text
 
-
-        udi_pi_file = NamedTemporaryFile(dir= 'c:\\ump', suffix='.png', delete=False)
-        udi_pi_file.close()
-        # udi_di_pi = barcode.codex.Gs1_128_AI([(key, UDI[key],) for key in UDI], writer=barcode.writer.ImageWriter())
-        udi_di_pi = barcode.codex.Gs1_128_AI(UDI, writer=barcode.writer.ImageWriter())
-        print(udi_di_pi.get_fullcode())
-        print(udi_di_pi.get_fullcode(astext=False))
-        print(udi_pi_file.name)
-        udi_di_pi.save(os.path.splitext(udi_pi_file.name)[0], {'format': 'PNG', })
 
         # barcode part
-        x1 = barcode_data['pdf_position']['x']
-        x2 = barcode_data['pdf_position']['x'] + barcode_data['pdf_position']['width']
-        y1 = barcode_data['pdf_position']['y']
-        y2 = barcode_data['pdf_position']['y'] + barcode_data['pdf_position']['height']
-        img_rect = fitz.Rect(x1, y1, x2, y2)
+        for bcd in barcode_data:
+            udi_pi_file = NamedTemporaryFile(dir='c:\\ump', suffix='.png', delete=False)
+            udi_pi_file.close()
+            # udi_di_pi = barcode.codex.Gs1_128_AI([(key, UDI[key],) for key in UDI], writer=barcode.writer.ImageWriter())
+            udi_di_pi = barcode.codex.Gs1_128_AI(UDI[bcd["name"]], writer=barcode.writer.ImageWriter())
+            print(udi_di_pi.get_fullcode())
+            print(udi_di_pi.get_fullcode(astext=False))
+            print(udi_pi_file.name)
+            udi_di_pi.save(os.path.splitext(udi_pi_file.name)[0], {'format': 'PNG', })
+            x1 = bcd['pdf_position']['x']
+            x2 = bcd['pdf_position']['x'] + bcd['pdf_position']['width']
+            y1 = bcd['pdf_position']['y']
+            y2 = bcd['pdf_position']['y'] + bcd['pdf_position']['height']
+            img_rect = fitz.Rect(x1, y1, x2, y2)
 
         # tworzenie kodu 2d
         # dm = encode ('(01)06009900408439(17)290319(30)01(10)240301'.encode('utf8'))
         # img = Image.frombytes('RGB', (dm.width, dm.height), dm.pixels)
         # img.save('/mnt/c/ump/aaa.png')
-        page.insert_image(img_rect, filename=udi_pi_file.name)
+            page.insert_image(img_rect, filename=udi_pi_file.name)
         template_pdf.save(self._temp_pdf_files[-1])
         template_pdf.close()
         self.load_pdf_file(self._temp_pdf_files[-1])
