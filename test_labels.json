@@ -59,8 +59,8 @@
     },
     {
       "name": "udi2",
-      "type": "gs1-128",
-      "pdf_position": {"x": 70, "y": 265, "width": 170, "height": 50},
+      "type": "gs1-datamatrix",
+      "pdf_position": {"x": 70, "y": 265, "width": 50, "height": 50},
       "value": "",
       "required_App_IDs": ["BEST_BEFORE", "BATCH/LOT", "PROD_DATE"]
     }
