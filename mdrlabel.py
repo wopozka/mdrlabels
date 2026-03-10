@@ -741,6 +741,19 @@ class MdrLabel(QMainWindow):
             else:
                 self.image_label.setText(f'Template PDF not found: {template_pdf}')
 
+    @staticmethod
+    def get_datamatrix_code(udi_fullcode):
+        udi_di_pi = barcode.codex.Gs1_128_AI(udi_fullcode)
+        fnc1 = "\x1d"
+        code = fnc1
+        for ai, val in udi_di_pi.ai_value:
+            code = code + ai + val
+            if udi_di_pi.is_fnc1_required(ai):
+                code += fnc1
+        if code.endswith(fnc1):
+            code = code[0:-1]
+        return code
+
     def add_dynamic_data_to_pdf_template(self):
         label_data = self.label_manager.get_label(self.current_label)
         if label_data is None:
@@ -783,15 +796,21 @@ class MdrLabel(QMainWindow):
             barcode_created = True
             if bcd['type'] == 'gs1-128':
                 udi_di_pi = barcode.codex.Gs1_128_AI(UDI[bcd["name"]], writer=barcode.writer.ImageWriter())
-                print(udi_di_pi.get_fullcode())
-                print(udi_di_pi.get_fullcode(astext=False))
-                print(udi_pi_file.name)
                 udi_di_pi.save(os.path.splitext(udi_pi_file.name)[0], {'format': 'PNG', })
             elif bcd['type'] == 'gs1-datamatrix':
-                udi_di_pi = barcode.codex.Gs1_128_AI(UDI[bcd["name"]])
-                dm = encode(udi_di_pi.get_fullcode().encode('utf8'))
+                dm = encode(self.get_datamatrix_code(UDI[bcd["name"]]).encode('utf8'))
                 img = Image.frombytes('RGB', (dm.width, dm.height), dm.pixels)
                 img.save(udi_pi_file.name)
+                # dla gs1-datamatrix HR code trzeba umiescic osobno
+                if 'HRCodePositions' in bcd:
+                    if len(udi_di_pi.get_fullcode(astext=False)) != len(bcd['HRCodePositions']):
+                        print(f"Error: number of HR code positions does not match number of characters in "
+                              f"full code for {bcd['name']}")
+                    else:
+                        for num, text in enumerate(udi_di_pi.get_fullcode(astext=False)):
+                            x, y =  bcd['HRCodePositions'][num].split('x')
+                            point = fitz.Point(float(x), float(y))
+                            page.insert_text(point, text, fontsize=8, color=colour)
             else:
                 barcode_created = False
             if barcode_created:
