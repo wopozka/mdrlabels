@@ -807,9 +807,6 @@ class MdrLabel(QMainWindow):
         self.load_pdf_file(self._temp_pdf_files[-1])
 
 
-
-
-
 if __name__ == "__main__":
     print('otwieram')
     app = QApplication(sys.argv)
