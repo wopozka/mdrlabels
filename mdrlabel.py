@@ -796,6 +796,8 @@ class MdrLabel(QMainWindow):
             barcode_created = True
             if bcd['type'] == 'gs1-128':
                 udi_di_pi = barcode.codex.Gs1_128_AI(UDI[bcd["name"]], writer=barcode.writer.ImageWriter())
+                print(UDI[bcd["name"]])
+                print(udi_di_pi.get_fullcode())
                 udi_di_pi.save(os.path.splitext(udi_pi_file.name)[0], {'format': 'PNG', })
             elif bcd['type'] == 'gs1-datamatrix':
                 dm = encode(self.get_datamatrix_code(UDI[bcd["name"]]).encode('utf8'))
