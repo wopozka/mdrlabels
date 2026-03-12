@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from collections import OrderedDict
+import re
 
 # Dodane: PyMuPDF do renderowania stron PDF (import przez nazwę 'pymupdf' zamiast 'fitz')
 try:
@@ -175,6 +176,40 @@ class ImageLabel(QLabel):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+
+
+class DataLineEdit(QLineEdit):
+    def __init__(self, *args, parent=None, **kwargs):
+        self.parent = parent
+        self.validated = None
+        super().__init__(*args, **kwargs)
+        # self.textEdited.connect(self.text_validate)
+        self.textChanged.connect(self.text_validate)
+
+    def text_validate(self):
+        # walidacja dla daty, zapewniamy że data jest ok
+        # sprawdzamy format daty: YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD
+        # sprawdzamy czy data poprawna (np. miesiąc 1-12, dzień 1-31, rok > 1900)
+        # sprawdzamy poprawność dni
+        # sprawdzamy czy rok przestępny
+
+        text = self.text()
+        if not text:
+            self.setStyleSheet('background: white;')
+            self.validated = None
+        elif len(text) > 10:
+            self.setStyleSheet('background: yellow;')
+            self.validated = False
+        elif re.match(r'^\d{4}[-/.]\d{2}[-/.]\d{2}$', text):
+            self.setStyleSheet('background: white;')
+            self.validated = True
+        else:
+            self.setStyleSheet('background: yellow;')
+            self.validated = False
+
+    def text(self):
+        return super().text().replace('/', '-').replace('.', '-')
+
 
 class ConfigDialog(QDialog):
     """Dialog do konfiguracji lokalizacji folderu Labels."""
@@ -373,8 +408,12 @@ class MdrLabel(QMainWindow):
             lbl = QLabel(label_text)
             if tooltip is not None:
                 lbl.setToolTip(tooltip)
-            lbl.setFixedWidth(120)  # keep labels aligned
-            le = QLineEdit()
+            lbl.setFixedWidth(120)
+            # keep labels aligned
+            if label_text in ('Manufacturing date', 'Use by date'):
+                le = DataLineEdit()
+            else:
+                le = QLineEdit()
             hl.addWidget(lbl)
             hl.addWidget(le)
             row.setLayout(hl)
@@ -386,10 +425,10 @@ class MdrLabel(QMainWindow):
         self.editable_fields = dict()
         self.editable_fields['PROD_DATE'] = add_row('Manufacturing date', tooltip='Format daty: YYYY-MM-DD')
         self.editable_fields['PROD_DATE'].setToolTip('Format daty: YYYY-MM-DD')
-        self.editable_fields['PROD_DATE'].setValidator(date_validator)
+        # self.editable_fields['PROD_DATE'].setValidator(date_validator)
         self.editable_fields['BEST_BEFORE'] = add_row('Use by date', tooltip='Format daty: YYYY-MM-DD')
         self.editable_fields['BEST_BEFORE'].setToolTip('Format daty: YYYY-MM-DD')
-        self.editable_fields['BEST_BEFORE'].setValidator(date_validator)
+        # self.editable_fields['BEST_BEFORE'].setValidator(date_validator)
         self.editable_fields['BATCH/LOT'] = add_row('Batch')
         self.editable_fields['SERIAL'] = add_row('Serial number')
         self.editable_fields['VAR_COUNT'] = add_row('Count')
