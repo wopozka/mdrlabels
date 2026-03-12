@@ -193,7 +193,7 @@ class DataLineEdit(QLineEdit):
         # sprawdzamy poprawność dni
         # sprawdzamy czy rok przestępny
 
-        text = self.text()
+        text = self.text().strip()
         if not text:
             self.setStyleSheet('background: white;')
             self.validated = None
@@ -208,7 +208,7 @@ class DataLineEdit(QLineEdit):
             self.validated = False
 
     def text(self):
-        return super().text().replace('/', '-').replace('.', '-')
+        return super().text().strip().replace('/', '-').replace('.', '-')
 
 
 class ConfigDialog(QDialog):
@@ -421,14 +421,11 @@ class MdrLabel(QMainWindow):
             return le
 
         date_regex = QRegularExpression(r'^\d{4}-\d{2}-\d{2}$')
-        date_validator = QRegularExpressionValidator(date_regex)
         self.editable_fields = dict()
         self.editable_fields['PROD_DATE'] = add_row('Manufacturing date', tooltip='Format daty: YYYY-MM-DD')
         self.editable_fields['PROD_DATE'].setToolTip('Format daty: YYYY-MM-DD')
-        # self.editable_fields['PROD_DATE'].setValidator(date_validator)
         self.editable_fields['BEST_BEFORE'] = add_row('Use by date', tooltip='Format daty: YYYY-MM-DD')
         self.editable_fields['BEST_BEFORE'].setToolTip('Format daty: YYYY-MM-DD')
-        # self.editable_fields['BEST_BEFORE'].setValidator(date_validator)
         self.editable_fields['BATCH/LOT'] = add_row('Batch')
         self.editable_fields['SERIAL'] = add_row('Serial number')
         self.editable_fields['VAR_COUNT'] = add_row('Count')
@@ -814,7 +811,7 @@ class MdrLabel(QMainWindow):
             y = field_to_fill['pdf_position']['y']
             point = fitz.Point(x, y)
             if field_to_fill['App_ID'] in self.editable_fields:
-                text = self.editable_fields[field_to_fill['App_ID']].text()
+                text = self.editable_fields[field_to_fill['App_ID']].text().strip()
             else:
                 text = f'Błąd: json zawiera niezdefiniowane pole {field_to_fill['App_ID']}'
             page.insert_text(point, text, fontsize=8, color=colour)
