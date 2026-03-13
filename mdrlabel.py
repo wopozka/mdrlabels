@@ -203,32 +203,32 @@ class DataLineEdit(QLineEdit):
             self.validated = False
             self.setToolTip('Niepoprawna data: Format daty: YYYY-MM-DD')
         elif re.match(r'^\d{4}[-/.]\d{2}[-/.]\d{2}$', text):
-            year, month, day = text.split('-')
-            if not 0 < int(month) <= 12:
+            year, month, day = [int(a) for a in text.split('-')]
+            if not 0 < month <= 12:
                 self.setStyleSheet('background: yellow;')
                 self.validated = False
                 self.setToolTip('Niepoprawna data: Miesiąc musi być 1-12')
                 return
-            if int(month) in (1, 3, 5, 7, 8, 10, 12) and not (0 <= int(day) <= 31):
+            if month in (1, 3, 5, 7, 8, 10, 12) and not (0 <= int(day) <= 31):
                 self.setStyleSheet('background: yellow;')
                 self.validated = False
                 self.setToolTip('Niepoprawna data: Dzień musi być 0-31')
                 return
-            if int(month) in (4, 6, 9, 11) and not (0 <= int(day) <= 30):
+            if month in (4, 6, 9, 11) and not (0 <= int(day) <= 30):
                 self.setStyleSheet('background: yellow;')
                 self.validated = False
                 self.setToolTip('Niepoprawna data: Dzień musi być 0-30')
                 return
-            if int(month) == 2:
-                if (int(year) % 4 == 0 and int(year) % 100 != 0) or (int(year) % 400 == 0):
+            if month == 2:
+                if (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0):
                     # rok przestępny
-                    if not (0 <= int(day) <= 29):
+                    if not (0 <= day <= 29):
                         self.setStyleSheet('background: yellow;')
                         self.validated = False
                         self.setToolTip('Niepoprawna data: Luty w roku przestępnym ma 29 dni')
                         return
                 else:
-                    if not (0 <= int(day) <= 28):
+                    if not (0 <= day <= 28):
                         self.setStyleSheet('background: yellow;')
                         self.validated = False
                         self.setToolTip('Niepoprawna data: Luty ma 28 dni')
