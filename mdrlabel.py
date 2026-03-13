@@ -197,15 +197,49 @@ class DataLineEdit(QLineEdit):
         if not text:
             self.setStyleSheet('background: white;')
             self.validated = None
+            self.setToolTip('Format daty: YYYY-MM-DD')
         elif len(text) > 10:
             self.setStyleSheet('background: yellow;')
             self.validated = False
+            self.setToolTip('Niepoprawna data: Format daty: YYYY-MM-DD')
         elif re.match(r'^\d{4}[-/.]\d{2}[-/.]\d{2}$', text):
+            year, month, day = text.split('-')
+            if not 0 < int(month) <= 12:
+                self.setStyleSheet('background: yellow;')
+                self.validated = False
+                self.setToolTip('Niepoprawna data: Miesiąc musi być 1-12')
+                return
+            if int(month) in (1, 3, 5, 7, 8, 10, 12) and not (0 <= int(day) <= 31):
+                self.setStyleSheet('background: yellow;')
+                self.validated = False
+                self.setToolTip('Niepoprawna data: Dzień musi być 0-31')
+                return
+            if int(month) in (4, 6, 9, 11) and not (0 <= int(day) <= 30):
+                self.setStyleSheet('background: yellow;')
+                self.validated = False
+                self.setToolTip('Niepoprawna data: Dzień musi być 0-30')
+                return
+            if int(month) == 2:
+                if (int(year) % 4 == 0 and int(year) % 100 != 0) or (int(year) % 400 == 0):
+                    # rok przestępny
+                    if not (0 <= int(day) <= 29):
+                        self.setStyleSheet('background: yellow;')
+                        self.validated = False
+                        self.setToolTip('Niepoprawna data: Luty w roku przestępnym ma 29 dni')
+                        return
+                else:
+                    if not (0 <= int(day) <= 28):
+                        self.setStyleSheet('background: yellow;')
+                        self.validated = False
+                        self.setToolTip('Niepoprawna data: Luty ma 28 dni')
+                        return
             self.setStyleSheet('background: white;')
+            self.setToolTip('Format daty: YYYY-MM-DD')
             self.validated = True
         else:
             self.setStyleSheet('background: yellow;')
             self.validated = False
+            self.setToolTip('Niepoprawna data: Format daty: YYYY-MM-DD')
 
     def text(self):
         return super().text().strip().replace('/', '-').replace('.', '-')
