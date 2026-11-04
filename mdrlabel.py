@@ -15,6 +15,10 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from collections import OrderedDict
 import re
+import subprocess
+from datetime import date
+import calendar
+
 
 # Dodane: PyMuPDF do renderowania stron PDF (import przez nazwę 'pymupdf' zamiast 'fitz')
 try:
@@ -182,9 +186,26 @@ class DataLineEdit(QLineEdit):
     def __init__(self, *args, parent=None, **kwargs):
         self.parent = parent
         self.validated = None
+        self.auto_calculated_from = None
+        self.auto_calculation_format = None
+        self.udi_text_format = None
         super().__init__(*args, **kwargs)
         # self.textEdited.connect(self.text_validate)
         self.textChanged.connect(self.text_validate)
+
+    def set_auto_calculated_from(self, auto_calculated_from, format):
+        self.auto_calculated_from = auto_calculated_from
+        self.auto_calculation_format = format
+
+    def unset_auto_calculated_from(self):
+        self.auto_calculated_from = None
+        self.auto_calculation_format = None
+
+    def set_udi_text_format(self, text_format):
+        self.udi_text_format = text_format
+
+    def unset_udi_text_format(self):
+        self.udi_text_format = None
 
     def text_validate(self):
         # walidacja dla daty, zapewniamy że data jest ok
@@ -242,7 +263,31 @@ class DataLineEdit(QLineEdit):
             self.setToolTip('Niepoprawna data: Format daty: YYYY-MM-DD')
 
     def text(self):
-        return super().text().strip().replace('/', '-').replace('.', '-')
+        # print(self.auto_calculated_from, self.auto_calculation_format)
+        if self.auto_calculated_from is None:
+            text = super().text().strip()
+        else:
+            text = self.auto_calculated_from.text()
+            if text and '-' in text:
+                year, month, day = text.split('-')
+                if not self.auto_calculation_format:
+                    pass
+                elif self.auto_calculation_format in ('Y+1', 'Y+2', 'Y+3', 'Y+4', 'Y+5', 'Y+6', 'Y+7'):
+                    _year = int(year) + int(self.auto_calculation_format.split('+')[-1])
+                    _day = min(int(day), calendar.monthrange(_year, int(month))[1])
+                    text = f'{_year}-{month}-{_day:02d}'
+        return text
+
+    def udi_text(self):
+        if self.udi_text_format is None:
+            return self.text()
+        elif self.udi_text_format == 'YYYYMMDD':
+            return self.text().replace('-', '')
+        elif self.udi_text_format == 'YYYY-MM-DD':
+            return self.text()
+        elif self.udi_text_format == 'YYMMDD':
+            return self.text().replace('-', '')[2:]
+
 
 
 class ConfigDialog(QDialog):
@@ -384,6 +429,7 @@ class MdrLabel(QMainWindow):
         self.setWindowTitle('MDR Label')
         self.setGeometry(100, 100, 800, 600)
         self.menu = self.menuBar()
+        self.auto_calculated_fields = dict()
         file_menu = self.menu.addMenu('&File')
         open_act = QAction('&Open PDF', self)
         open_act.triggered.connect(self.open_pdf)
@@ -444,7 +490,7 @@ class MdrLabel(QMainWindow):
                 lbl.setToolTip(tooltip)
             lbl.setFixedWidth(120)
             # keep labels aligned
-            if label_text in ('Manufacturing date', 'Use by date'):
+            if label_text in ('Manufacturing date', 'Expiration date', 'Batch'):
                 le = DataLineEdit()
             else:
                 le = QLineEdit()
@@ -458,8 +504,8 @@ class MdrLabel(QMainWindow):
         self.editable_fields = dict()
         self.editable_fields['PROD_DATE'] = add_row('Manufacturing date', tooltip='Format daty: YYYY-MM-DD')
         self.editable_fields['PROD_DATE'].setToolTip('Format daty: YYYY-MM-DD')
-        self.editable_fields['BEST_BEFORE'] = add_row('Use by date', tooltip='Format daty: YYYY-MM-DD')
-        self.editable_fields['BEST_BEFORE'].setToolTip('Format daty: YYYY-MM-DD')
+        self.editable_fields['USE_BY_OR_EXPIRY'] = add_row('Expiration date', tooltip='Format daty: YYYY-MM-DD')
+        self.editable_fields['USE_BY_OR_EXPIRY'].setToolTip('Format daty: YYYY-MM-DD')
         self.editable_fields['BATCH/LOT'] = add_row('Batch')
         self.editable_fields['SERIAL'] = add_row('Serial number')
         self.editable_fields['VAR_COUNT'] = add_row('Count')
@@ -474,6 +520,7 @@ class MdrLabel(QMainWindow):
         fill_label_button.clicked.connect(self.add_dynamic_data_to_pdf_template)
         hl.addWidget(fill_label_button)
         print_button = QPushButton('Print')
+        print_button.clicked.connect( self.print_label)
         hl.addWidget(print_button)
         row.setLayout(hl)
         vlayout.addWidget(row)
@@ -785,6 +832,9 @@ class MdrLabel(QMainWindow):
         for field in self.editable_fields:
             self.editable_fields[field].clear()
             self.editable_fields[field].setEnabled(False)
+            if hasattr(self.editable_fields[field], 'auto_calculated_from'):
+                self.editable_fields[field].unset_auto_calculated_from()
+                self.editable_fields[field].unset_udi_text_format()
 
         # wypełnij wartosciami
         for field in fields:
@@ -794,6 +844,16 @@ class MdrLabel(QMainWindow):
             self.editable_fields[field['App_ID']].setEnabled(True)
             if 'value' in field and field['value']:
                 self.editable_fields[field['App_ID']].setText(field['value'])
+            if 'udi_format' in field and field['udi_format']:
+                self.editable_fields[field['App_ID']].set_udi_text_format(field['udi_format'])
+            if 'auto_value' in field and field['auto_value']:
+                self.editable_fields[field['App_ID']].setText('Automatyczne')
+                auto_app_id, auto_format = field['auto_value'].split(':')
+                # print(self.editable_fields.keys())
+                self.editable_fields[field['App_ID']].set_auto_calculated_from(self.editable_fields[auto_app_id], auto_format)
+
+            # dodajemy pola które są automatycznie liczone
+
             if 'editable' in field and not field['editable']:
                 self.editable_fields[field['App_ID']].setEnabled(False)
 
@@ -824,6 +884,30 @@ class MdrLabel(QMainWindow):
             code = code[0:-1]
         return code
 
+    def print_label(self):
+        if self._temp_pdf_files:
+            pdf_to_print = self._temp_pdf_files[-1]
+            print(pdf_to_print)
+            if os.path.exists(pdf_to_print):
+                try:
+                    if sys.platform.startswith('win'):
+                        # Windows
+                        # os.startfile(pdf_to_print, 'print')
+                        os.startfile(pdf_to_print)
+                    elif sys.platform.startswith('darwin'):
+                        # macOS
+                        subprocess.run(['lp', pdf_to_print])
+                    else:
+                        # Linux/Unix
+                        subprocess.run(['lp', pdf_to_print])
+                except Exception as e:
+                    QMessageBox.critical(self, 'Print Error', f'Failed to print: {e}')
+            else:
+                QMessageBox.warning(self, 'Print Error', 'No PDF file to print.')
+        else:
+            QMessageBox.warning(self, 'Print Error', 'No PDF file to print.')
+
+
     def add_dynamic_data_to_pdf_template(self):
         label_data = self.label_manager.get_label(self.current_label)
         if label_data is None:
@@ -835,23 +919,28 @@ class MdrLabel(QMainWindow):
         self._temp_pdf_files.append(aaa.name)
         template_pdf = fitz.open(self._current_pdf_template_path)
         page = template_pdf[0]
-        colour = (1, 0, 0)
+        colour = (0, 0, 0)
         for bcd in barcode_data:
-            print(bcd)
             for app_id in bcd['required_App_IDs']:
                 UDI[bcd["name"]][app_id] = ''
+        print(label_data['fields'])
         for field_to_fill in label_data['fields']:
             x = field_to_fill['pdf_position']['x']
             y = field_to_fill['pdf_position']['y']
             point = fitz.Point(x, y)
+            fontsize = 8
+            if 'font_size' in field_to_fill:
+                fontsize = field_to_fill['font_size']
             if field_to_fill['App_ID'] in self.editable_fields:
                 text = self.editable_fields[field_to_fill['App_ID']].text().strip()
             else:
                 text = f'Błąd: json zawiera niezdefiniowane pole {field_to_fill['App_ID']}'
-            page.insert_text(point, text, fontsize=8, color=colour)
+            page.insert_text(point, text, fontsize=fontsize, color=colour)
+            # print('field to fill', field_to_fill, repr(text))
             for bcd in barcode_data:
+                print('bcd', bcd['name'], field_to_fill['App_ID'], repr(text))
                 if field_to_fill['App_ID'] in bcd['required_App_IDs']:
-                    if field_to_fill['App_ID'] in ('BEST_BEFORE', 'PROD_DATE'):
+                    if field_to_fill['App_ID'] in ('USE_BY_OR_EXPIRY', 'PROD_DATE'):
                         text_to_udi = text.split('-')
                         UDI[bcd["name"]][field_to_fill['App_ID']] = text_to_udi[0][2:4] + text_to_udi[1] + text_to_udi[2]
                     else:
@@ -865,6 +954,7 @@ class MdrLabel(QMainWindow):
             # udi_di_pi = barcode.codex.Gs1_128_AI([(key, UDI[key],) for key in UDI], writer=barcode.writer.ImageWriter())
             barcode_created = True
             if bcd['type'] == 'gs1-128':
+                print(UDI[bcd["name"]])
                 udi_di_pi = barcode.codex.Gs1_128_AI(UDI[bcd["name"]], writer=barcode.writer.ImageWriter())
                 print(UDI[bcd["name"]])
                 print(udi_di_pi.get_fullcode())
@@ -896,6 +986,33 @@ class MdrLabel(QMainWindow):
             os.remove(udi_pi_file.name)
         template_pdf.close()
         self.load_pdf_file(self._temp_pdf_files[-1])
+
+    @staticmethod
+    def apply_format_get_value(data_text, format):
+        year, month, day = data_text.split('-')
+        if format == 'alphanumeric':
+            return data_text
+        elif format == 'YYYY-MM-DD':
+            return '-'.join(year, month, day)
+        elif format == 'YYYYMMDD':
+            return year + month + day
+        elif format == 'YYMMDD':
+            return year[2:] + month + day
+        elif format in ('YYYY+1MMDD', 'YYYY+2MMDD', 'YYYY+3MMDD', 'YYYY+4MMDD', 'YYYY+5MMDD', 'YYYY+6MMDD',
+                        'YYYY+7MMDD'):
+            num = int(format.strip('YMD'))
+            return str(int(year) + num) + month + day
+
+        if self.auto_calculation_format.startswith('Y+'):
+            year, md = data_text.split('-', 1)
+            calc_val = str(int(year) + int(calculation_def[2:])) + '-' + md
+        elif calculation_def.startswith('M+'):
+            calc_val = data_text
+        elif calculation_def.startswith('D+'):
+            calc_val = data_text
+        else:
+            calc_val = data_text
+        return calc_val
 
 
 if __name__ == "__main__":
