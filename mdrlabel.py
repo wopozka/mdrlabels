@@ -429,7 +429,6 @@ class MdrLabel(QMainWindow):
         self.setWindowTitle('MDR Label')
         self.setGeometry(100, 100, 800, 600)
         self.menu = self.menuBar()
-        self.auto_calculated_fields = dict()
         file_menu = self.menu.addMenu('&File')
         open_act = QAction('&Open PDF', self)
         open_act.triggered.connect(self.open_pdf)
@@ -936,16 +935,18 @@ class MdrLabel(QMainWindow):
             else:
                 text = f'Błąd: json zawiera niezdefiniowane pole {field_to_fill['App_ID']}'
             page.insert_text(point, text, fontsize=fontsize, color=colour)
-            # print('field to fill', field_to_fill, repr(text))
-            for bcd in barcode_data:
-                print('bcd', bcd['name'], field_to_fill['App_ID'], repr(text))
-                if field_to_fill['App_ID'] in bcd['required_App_IDs']:
-                    if field_to_fill['App_ID'] in ('USE_BY_OR_EXPIRY', 'PROD_DATE'):
-                        text_to_udi = text.split('-')
-                        UDI[bcd["name"]][field_to_fill['App_ID']] = text_to_udi[0][2:4] + text_to_udi[1] + text_to_udi[2]
-                    else:
-                        UDI[bcd["name"]][field_to_fill['App_ID']]= text
 
+            if field_to_fill['App_ID'] in ('USE_BY_OR_EXPIRY', 'PROD_DATE', 'BATCH/LOT'):
+                text_to_udi = self.editable_fields[field_to_fill['App_ID']].udi_text()
+            else:
+                text_to_udi = text
+
+            # print('field to fill', field_to_fill, repr(text))
+            # ponieważ możemy mieć zdefiniowanych kilka barrcodów i każdy może mieć inne dane
+            # dlatego iterujemy po nich i sprawdzamy czy tutaj czego nie trzeba dodać.
+            for bcd in barcode_data:
+                if field_to_fill['App_ID'] in bcd['required_App_IDs']:
+                    UDI[bcd["name"]][field_to_fill['App_ID']] = text_to_udi
 
         # barcode part
         for bcd in barcode_data:
