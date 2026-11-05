@@ -278,17 +278,6 @@ class DataLineEdit(QLineEdit):
                     text = f'{_year}-{month}-{_day:02d}'
         return text
 
-    def udi_text(self):
-        if self.udi_text_format is None:
-            return self.text()
-        elif self.udi_text_format == 'YYYYMMDD':
-            return self.text().replace('-', '')
-        elif self.udi_text_format == 'YYYY-MM-DD':
-            return self.text()
-        elif self.udi_text_format == 'YYMMDD':
-            return self.text().replace('-', '')[2:]
-
-
 
 class ConfigDialog(QDialog):
     """Dialog do konfiguracji lokalizacji folderu Labels."""
@@ -833,7 +822,6 @@ class MdrLabel(QMainWindow):
             self.editable_fields[field].setEnabled(False)
             if hasattr(self.editable_fields[field], 'auto_calculated_from'):
                 self.editable_fields[field].unset_auto_calculated_from()
-                self.editable_fields[field].unset_udi_text_format()
 
         # wypełnij wartosciami
         for field in fields:
@@ -843,8 +831,8 @@ class MdrLabel(QMainWindow):
             self.editable_fields[field['App_ID']].setEnabled(True)
             if 'value' in field and field['value']:
                 self.editable_fields[field['App_ID']].setText(field['value'])
-            if 'udi_format' in field and field['udi_format']:
-                self.editable_fields[field['App_ID']].set_udi_text_format(field['udi_format'])
+            # if 'udi_format' in field and field['udi_format']:
+            #    self.editable_fields[field['App_ID']].set_udi_text_format(field['udi_format'])
             if 'auto_value' in field and field['auto_value']:
                 self.editable_fields[field['App_ID']].setText('Automatyczne')
                 auto_app_id, auto_format = field['auto_value'].split(':')
@@ -931,15 +919,19 @@ class MdrLabel(QMainWindow):
             if 'font_size' in field_to_fill:
                 fontsize = field_to_fill['font_size']
             if field_to_fill['App_ID'] in self.editable_fields:
-                text = self.editable_fields[field_to_fill['App_ID']].text().strip()
+                format = field_to_fill['text_format']  if 'text_format' in field_to_fill else  None
+
+                text = self.get_formated_text(self.editable_fields[field_to_fill['App_ID']].text(), format)
             else:
                 text = f'Błąd: json zawiera niezdefiniowane pole {field_to_fill['App_ID']}'
             page.insert_text(point, text, fontsize=fontsize, color=colour)
 
             if field_to_fill['App_ID'] in ('USE_BY_OR_EXPIRY', 'PROD_DATE', 'BATCH/LOT'):
-                text_to_udi = self.editable_fields[field_to_fill['App_ID']].udi_text()
+                format = field_to_fill['udi_format'] if 'udi_format' in field_to_fill else None
+                text_to_udi = self.get_formated_text(self.editable_fields[field_to_fill['App_ID']].text(), format)
             else:
-                text_to_udi = text
+                format = field_to_fill['text_format'] if 'text_format' in field_to_fill else None
+                text_to_udi = self.get_formated_text(self.editable_fields[field_to_fill['App_ID']].text(), format)
 
             # print('field to fill', field_to_fill, repr(text))
             # ponieważ możemy mieć zdefiniowanych kilka barrcodów i każdy może mieć inne dane
@@ -989,31 +981,16 @@ class MdrLabel(QMainWindow):
         self.load_pdf_file(self._temp_pdf_files[-1])
 
     @staticmethod
-    def apply_format_get_value(data_text, format):
-        year, month, day = data_text.split('-')
-        if format == 'alphanumeric':
-            return data_text
-        elif format == 'YYYY-MM-DD':
-            return '-'.join(year, month, day)
+    def get_formated_text(text, format):
+        if format is None:
+            return text
         elif format == 'YYYYMMDD':
-            return year + month + day
+            return text.replace('-', '')
+        elif format == 'YYYY-MM-DD':
+            return text
         elif format == 'YYMMDD':
-            return year[2:] + month + day
-        elif format in ('YYYY+1MMDD', 'YYYY+2MMDD', 'YYYY+3MMDD', 'YYYY+4MMDD', 'YYYY+5MMDD', 'YYYY+6MMDD',
-                        'YYYY+7MMDD'):
-            num = int(format.strip('YMD'))
-            return str(int(year) + num) + month + day
-
-        if self.auto_calculation_format.startswith('Y+'):
-            year, md = data_text.split('-', 1)
-            calc_val = str(int(year) + int(calculation_def[2:])) + '-' + md
-        elif calculation_def.startswith('M+'):
-            calc_val = data_text
-        elif calculation_def.startswith('D+'):
-            calc_val = data_text
-        else:
-            calc_val = data_text
-        return calc_val
+            return text.replace('-', '')[2:]
+        return text
 
 
 if __name__ == "__main__":
