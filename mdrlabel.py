@@ -984,6 +984,8 @@ class MdrLabel(QMainWindow):
     def get_formated_text(text, format):
         if format is None:
             return text
+        elif not format:
+            return text
         elif format == 'YYYYMMDD':
             return text.replace('-', '')
         elif format == 'YYYY-MM-DD':
