@@ -16,7 +16,7 @@ from tempfile import NamedTemporaryFile
 from collections import OrderedDict
 import re
 import subprocess
-from datetime import date
+import datetime
 import calendar
 
 
@@ -186,12 +186,19 @@ class DataLineEdit(QLineEdit):
     def __init__(self, *args, parent=None, **kwargs):
         self.parent = parent
         self.validated = None
+        self.validation_format = None
         self.auto_calculated_from = None
         self.auto_calculation_format = None
         self.udi_text_format = None
         super().__init__(*args, **kwargs)
         # self.textEdited.connect(self.text_validate)
         self.textChanged.connect(self.text_validate)
+
+    def set_validation_format(self, validation_format):
+        self.validation_format = validation_format
+
+    def unset_validation_format(self):
+        self.validation_format = None
 
     def set_auto_calculated_from(self, auto_calculated_from, format):
         self.auto_calculated_from = auto_calculated_from
@@ -213,54 +220,39 @@ class DataLineEdit(QLineEdit):
         # sprawdzamy czy data poprawna (np. miesiąc 1-12, dzień 1-31, rok > 1900)
         # sprawdzamy poprawność dni
         # sprawdzamy czy rok przestępny
-
-        text = self.text().strip()
-        if not text:
-            self.setStyleSheet('background: white;')
-            self.validated = None
-            self.setToolTip('Format daty: YYYY-MM-DD')
-        elif len(text) > 10:
-            self.setStyleSheet('background: yellow;')
-            self.validated = False
-            self.setToolTip('Niepoprawna data: Format daty: YYYY-MM-DD')
-        elif re.match(r'^\d{4}[-/.]\d{2}[-/.]\d{2}$', text):
-            year, month, day = [int(a) for a in text.split('-')]
-            if not 0 < month <= 12:
-                self.setStyleSheet('background: yellow;')
-                self.validated = False
-                self.setToolTip('Niepoprawna data: Miesiąc musi być 1-12')
-                return
-            if month in (1, 3, 5, 7, 8, 10, 12) and not (0 <= int(day) <= 31):
-                self.setStyleSheet('background: yellow;')
-                self.validated = False
-                self.setToolTip('Niepoprawna data: Dzień musi być 0-31')
-                return
-            if month in (4, 6, 9, 11) and not (0 <= int(day) <= 30):
-                self.setStyleSheet('background: yellow;')
-                self.validated = False
-                self.setToolTip('Niepoprawna data: Dzień musi być 0-30')
-                return
-            if month == 2:
-                if (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0):
-                    # rok przestępny
-                    if not (0 <= day <= 29):
-                        self.setStyleSheet('background: yellow;')
-                        self.validated = False
-                        self.setToolTip('Niepoprawna data: Luty w roku przestępnym ma 29 dni')
-                        return
-                else:
-                    if not (0 <= day <= 28):
-                        self.setStyleSheet('background: yellow;')
-                        self.validated = False
-                        self.setToolTip('Niepoprawna data: Luty ma 28 dni')
-                        return
-            self.setStyleSheet('background: white;')
-            self.setToolTip('Format daty: YYYY-MM-DD')
+        print('validation_format', self.validation_format)
+        if self.auto_calculated_from is not None:
             self.validated = True
-        else:
-            self.setStyleSheet('background: yellow;')
-            self.validated = False
-            self.setToolTip('Niepoprawna data: Format daty: YYYY-MM-DD')
+            return
+        if self.validation_format is None:
+            self.validated = True
+            return
+        text = self.text().strip()
+        if self.validation_format == 'YYYY-MM-DD':
+            if not text:
+                self.setStyleSheet('background: yellow;')
+                self.validated = None
+                self.setToolTip('Format daty: YYYY-MM-DD')
+            else:
+                try:
+                    _date = datetime.date.fromisoformat(text)
+                except ValueError as error_message:
+                    print(error_message)
+                    self.setStyleSheet('background: yellow;')
+                    self.validated = False
+                    self.setToolTip('Niepoprawna data: YYYY-MM-DD')
+                else:
+                    self.setStyleSheet('background: white;')
+                    self.setToolTip('Format daty: YYYY-MM-DD')
+                    self.validated = True
+        elif self.validation_format == 'alphanumeric':
+            if not text:
+                self.setStyleSheet('background: yellow;')
+                self.validated = None
+                self.setToolTip('Foramt danych: litery i cyfry')
+            else:
+                self.setStyleSheet('background: white;')
+                self.validated = True
 
     def text(self):
         # print(self.auto_calculated_from, self.auto_calculation_format)
@@ -817,32 +809,40 @@ class MdrLabel(QMainWindow):
         # Wczytaj pola formularza dla tej etykiety
         fields = self.label_manager.get_fields(label_name)
         # najpierw wyczyść stare pola, potem je wyłącz, a włącz tylko te wymienione w JSONIE
+        # print('Czyszcze wypełnione pola')
         for field in self.editable_fields:
-            self.editable_fields[field].clear()
-            self.editable_fields[field].setEnabled(False)
+            # print(f'Czyszcze pole: {field}')
             if hasattr(self.editable_fields[field], 'auto_calculated_from'):
                 self.editable_fields[field].unset_auto_calculated_from()
+            if hasattr(self.editable_fields[field], 'validation_format'):
+                # print(f'Czyszcze validation format dla: {field}')
+                self.editable_fields[field].unset_validation_format()
+            self.editable_fields[field].clear()
+            self.editable_fields[field].setEnabled(False)
 
         # wypełnij wartosciami
+        for f in fields:
+           print(f)
         for field in fields:
-            if field['App_ID'] not in self.editable_fields:
+           if field['App_ID'] not in self.editable_fields:
                 # obsluzyc sytuacje gdy JSON zawiera pole, którego nie ma w interfejsie
-                continue
-            self.editable_fields[field['App_ID']].setEnabled(True)
-            if 'value' in field and field['value']:
-                self.editable_fields[field['App_ID']].setText(field['value'])
-            # if 'udi_format' in field and field['udi_format']:
-            #    self.editable_fields[field['App_ID']].set_udi_text_format(field['udi_format'])
-            if 'auto_value' in field and field['auto_value']:
-                self.editable_fields[field['App_ID']].setText('Automatyczne')
-                auto_app_id, auto_format = field['auto_value'].split(':')
-                # print(self.editable_fields.keys())
-                self.editable_fields[field['App_ID']].set_auto_calculated_from(self.editable_fields[auto_app_id], auto_format)
+               continue
+           self.editable_fields[field['App_ID']].setEnabled(True)
+           if 'auto_value' in field and field['auto_value']:
+               # self.editable_fields[field['App_ID']].setText('Automatyczne')
+               auto_app_id, auto_format = field['auto_value'].split(':')
+               # print(self.editable_fields.keys())
+               self.editable_fields[field['App_ID']].set_auto_calculated_from(self.editable_fields[auto_app_id], auto_format)
+           if hasattr(self.editable_fields[field['App_ID']], 'validation_format') and 'format' in field and field['format']:
+               print(f'Ustawiam validation format dla {field['App_ID']}, na wartość {field['format']}')
+               self.editable_fields[field['App_ID']].set_validation_format(field['format'])
+           if 'value' in field and field['value']:
+               self.editable_fields[field['App_ID']].setText(field['value'])
 
-            # dodajemy pola które są automatycznie liczone
+           # wyłączamy niaktywne pola
 
-            if 'editable' in field and not field['editable']:
-                self.editable_fields[field['App_ID']].setEnabled(False)
+           if 'editable' in field and not field['editable']:
+               self.editable_fields[field['App_ID']].setEnabled(False)
 
        # self.populate_dynamic_fields(fields)
 
